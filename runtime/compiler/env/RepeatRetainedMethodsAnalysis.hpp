@@ -82,6 +82,21 @@ void getDataForClient(
    std::vector<TR_ResolvedMethod*> &bondMethods);
 
 /**
+ * \brief Populate data needed for the client to repeat the analysis.
+ * \param comp the compilation object
+ * \param[out] inliningTable the inlining table
+ * \param[out] inlinedSiteInfo vector of InlinedSiteInfo, sorted by site index
+ * \param[out] keepaliveMethods the remote mirrors of the server's keepalive methods
+ * \param[out] bondMethods the remote mirrors of the server's bond methods
+ */
+void getDataForClient(
+   TR::Compilation *comp,
+   std::vector<J9::ResolvedInlinedCallSite> &inliningTable,
+   std::vector<InlinedSiteInfo> &inlinedSiteInfo,
+   std::vector<TR_ResolvedMethod*> &keepaliveMethods,
+   std::vector<TR_ResolvedMethod*> &bondMethods);
+
+/**
  * \brief Do the repeat analysis. This must only be called on the client.
  * \param comp the compilation object
  * \param inliningTable the inlining table

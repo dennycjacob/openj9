@@ -459,7 +459,29 @@ TR_MethodHandleTransformer::computeObjectInfoOfNode(TR::TreeTop *tt, TR::Node *n
             node,
             koi))
       {
-      node->setKnownObjectIndex(koi);
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+      if (!comp()->useConstRefs())
+         {
+         node->setKnownObjectIndex(koi);
+         }
+      else
+#endif
+         {
+         // Replace the node outright. It must not have any side-effects (even
+         // if it's a call). If the node was the child of a null check, then
+         // the check must be eliminated too.
+         TR::Node *ttNode = tt->getNode();
+         if (ttNode->getOpCode().isNullCheck() && node == ttNode->getChild(0))
+            {
+            TR::Node::recreate(ttNode, TR::treetop);
+            }
+
+         anchorAllChildren(node, tt);
+         node->removeAllChildren();
+         TR::Node::recreateWithSymRef(node, TR::aload, knot->constSymRef(koi));
+         node->setIsNull(false);
+         node->setIsNonNull(true);
+         }
       }
    }
 
@@ -471,10 +493,12 @@ TR_MethodHandleTransformer::getObjectInfoOfNode(TR::Node *node)
       node->getType() == TR::Address,
       "Can't have object info on non-address type node");
 
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
    if (node->hasKnownObjectIndex())
       {
       return node->getKnownObjectIndex();
       }
+#endif
 
    if (!node->getOpCode().hasSymbolReference())
       {
@@ -893,6 +917,7 @@ VarHandle$TypesAndInvokers field as the MethodHandle table exists as a field of 
 void
 TR_MethodHandleTransformer::process_java_lang_invoke_Invokers_checkVarHandleGenericType(TR::TreeTop* tt, TR::Node* node)
    {
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
    static const bool disableFoldingVHGenType = feGetEnv("TR_disableFoldingVHGenType") != NULL;
    if (disableFoldingVHGenType)
       {
@@ -915,6 +940,18 @@ TR_MethodHandleTransformer::process_java_lang_invoke_Invokers_checkVarHandleGene
    int32_t mhEntryIndex = comp()->fej9()->getVarHandleAccessDescriptorMode(comp(), adIndex);
    if (mhIndex == TR::KnownObjectTable::UNKNOWN || mhEntryIndex < 0)
       {
+      return;
+      }
+
+   if (comp()->useConstRefs())
+      {
+      // This can't normally happen with const refs. Since we got a valid
+      // mhIndex here, we would have gotten the same mhIndex when determining
+      // the known object info for the call, and at that point the call would
+      // have been replaced with a const ref load. And that's if the call even
+      // made it out of ilgen, which would have replaced it with a constant if
+      // it were folded earlier in InterpreterEmulator. However, don't assert.
+      // The earlier transformation could be denied by performTransformation().
       return;
       }
 
@@ -1008,4 +1045,5 @@ TR_MethodHandleTransformer::process_java_lang_invoke_Invokers_checkVarHandleGene
       {
       tt->insertBefore(TR::TreeTop::create(comp(), TR::Node::createCompressedRefsAnchor(node)));
       }
+#endif // TR_ALLOW_NON_CONST_KNOWN_OBJECTS
    }

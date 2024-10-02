@@ -318,7 +318,7 @@ bool J9::TransformUtil::avoidFoldingInstanceField(
       // of this field to a known object. (LambdaForm.vmentry doesn't need to
       // be listed here because it isn't even final.)
       case TR::Symbol::Java_lang_invoke_MethodHandle_form:
-         return true;
+         return !comp->useConstRefs();
 
       default:
          break;
@@ -1291,13 +1291,16 @@ J9::TransformUtil::canFoldStaticFinalField(
       case 'L':
       case '[':
          {
-         // Ideally we should trust these as well, but current known
-         // object handling in the compiler is unable to deal with the
-         // possibility of a later store to the field, e.g. via the
-         // setAccessible modifiers hack. If we derive a known object at
-         // a particular point and then later reach that point after the
-         // field is modified, we get undefined behaviour, which is too
-         // steep a consequence.
+         // This requires const refs to ensure that the generated code will
+         // remember and use the value observed at compile-time.
+         static const bool disable =
+            feGetEnv("TR_disableAggressiveReferenceSFFF") != NULL;
+
+         if (!disable && comp->useConstRefs())
+            {
+            return TR_yes;
+            }
+
          break;
          }
       }
@@ -1673,15 +1676,34 @@ J9::TransformUtil::foldStaticFinalFieldImpl(TR::Compilation *comp, TR::Node *nod
    else if (value.isKnownObject())
       {
       TR::KnownObjectTable::Index koi = value.getKnownObjectIndex();
-      if (!performTransformation(comp, "O^O transformDirectLoad: mark n%un [%p] as obj%d\n",
+      bool constRefs = comp->useConstRefs();
+      if (!performTransformation(comp, "O^O transformDirectLoad: %s n%un [%p] as obj%d\n",
+            constRefs ? "fold" : "mark",
             node->getGlobalIndex(),
             node,
             koi))
          return false;
 
-      TR::SymbolReference *improvedSymRef =
-         comp->getSymRefTab()->findOrCreateSymRefWithKnownObject(
+      TR::SymbolReference *improvedSymRef = symRef;
+      if (constRefs)
+         {
+         improvedSymRef = comp->getKnownObjectTable()->constSymRef(koi);
+         if (node->getOpCode().isReadBar())
+            {
+            // This removes all children without anchoring, which is unusual,
+            // but it's what we do for primitive constants (typeIsConstible).
+            // The child is probably always loadaddr.
+            prepareNodeToBeLoadConst(node);
+            TR::Node::recreate(node, TR::aload);
+            }
+         }
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+      else
+         {
+         improvedSymRef = comp->getSymRefTab()->findOrCreateSymRefWithKnownObject(
             node->getSymbolReference(), koi);
+         }
+#endif
 
       node->setSymbolReference(improvedSymRef);
       node->setIsNull(false);
@@ -2341,7 +2363,10 @@ J9::TransformUtil::transformIndirectLoadChainImpl(TR::Compilation *comp,
             {
             TR::KnownObjectTable *knot = comp->getOrCreateKnownObjectTable();
             if (!knot)
+               {
                return false;
+               }
+
             TR::KnownObjectTable::Index knotIndex = TR::KnownObjectTable::UNKNOWN;
 #if defined(J9VM_OPT_JITSERVER)
             if (isServer)
@@ -2354,7 +2379,7 @@ J9::TransformUtil::transformIndirectLoadChainImpl(TR::Compilation *comp,
                value = fej9->getReferenceFieldAtAddress((uintptr_t)valuePtr);
                if (value)
                   {
-                  knotIndex = comp->getKnownObjectTable()->getOrCreateIndexAt(&value,
+                  knotIndex = knot->getOrCreateIndexAt(&value,
                      isArrayWithConstantElements(symRef, comp));
                   }
                }
@@ -2371,29 +2396,48 @@ J9::TransformUtil::transformIndirectLoadChainImpl(TR::Compilation *comp,
                   baseAddress,
                   comp->constProvenanceGraph()->knownObject(knotIndex));
 
-               TR::SymbolReference *improvedSymRef =
-                  comp->getSymRefTab()->findOrCreateSymRefWithKnownObject(symRef, knotIndex);
-
-               if (improvedSymRef->hasKnownObjectIndex()
-                  && performTransformation(comp, "O^O transformIndirectLoadChain: %s [%p] with fieldOffset %d is obj%d referenceAddr is %p\n", node->getOpCode().getName(), node, improvedSymRef->getKnownObjectIndex(), symRef->getOffset(), (void*)value))
-                  {
-                  node->setSymbolReference(improvedSymRef);
-                  node->setIsNull(false);
-                  node->setIsNonNull(true);
-                  int32_t stableArrayRank = isArrayWithStableElements(symRef->getCPIndex(),
-                                                                     symRef->getOwningMethod(comp),
-                                                                     comp);
-                  if (isBaseStableArray)
-                     stableArrayRank = baseStableArrayRank - 1;
-
-                  if (stableArrayRank > 0)
-                     {
-                     knot->addStableArray(improvedSymRef->getKnownObjectIndex(), stableArrayRank);
-                     }
-                  }
-               else
+               if (!performTransformation(
+                     comp,
+                     "O^O transformIndirectLoadChain: n%un %s [%p] with fieldOffset %d is obj%d\n",
+                     node->getGlobalIndex(),
+                     node->getOpCode().getName(),
+                     node,
+                     (int)symRef->getOffset(),
+                     knotIndex))
                   {
                   return false;
+                  }
+
+               if (comp->useConstRefs())
+                  {
+                  *removedNode = node->getChild(0);
+                  node->setNumChildren(0);
+                  node->setFlags(0);
+                  TR::Node::recreateWithSymRef(node, TR::aload, knot->constSymRef(knotIndex));
+                  }
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+               else
+                  {
+                  TR::SymbolReference *improvedSymRef =
+                     comp->getSymRefTab()->findOrCreateSymRefWithKnownObject(symRef, knotIndex);
+
+                  node->setSymbolReference(improvedSymRef);
+                  }
+#endif
+
+               node->setIsNull(false);
+               node->setIsNonNull(true);
+               int32_t stableArrayRank = isArrayWithStableElements(symRef->getCPIndex(),
+                                                                  symRef->getOwningMethod(comp),
+                                                                  comp);
+               if (isBaseStableArray)
+                  {
+                  stableArrayRank = baseStableArrayRank - 1;
+                  }
+
+               if (stableArrayRank > 0)
+                  {
+                  knot->addStableArray(knotIndex, stableArrayRank);
                   }
                }
             else

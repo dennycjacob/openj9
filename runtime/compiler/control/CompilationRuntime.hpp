@@ -917,6 +917,8 @@ public:
    void setCpuUtil(CpuUtilization *cpuUtil){ _cpuUtil = cpuUtil; }
    UDATA getVMStateOfCrashedThread() { return _vmStateOfCrashedThread; }
    void setVMStateOfCrashedThread(UDATA vmState) { _vmStateOfCrashedThread = vmState; }
+   bool crashWasDueToOrphanedConstRefs() { return _crashWasDueToOrphanedConstRefs; }
+   void setCrashWasDueToOrphanedConstRefs(bool x) { _crashWasDueToOrphanedConstRefs = x; }
    void printCompQueue();
    TR::CompilationInfoPerThread *getCompilationInfoForDiagnosticThread() const { return _compInfoForDiagnosticCompilationThread; }
    TR::CompilationInfoPerThread * const *getArrayOfCompilationInfoPerThread() const { return _arrayOfCompilationInfoPerThread; }
@@ -1376,6 +1378,7 @@ private:
    TR_JitSampleInfo  _jitSampleInfo;
    TR_SharedCacheRelocationRuntime _sharedCacheReloRuntime;
    uintptr_t _vmStateOfCrashedThread; // Set by Jit Dump; used by diagnostic thread
+   bool _crashWasDueToOrphanedConstRefs; // Set by Jit Dump; used by diagnostic thread
 #if defined(J9VM_OPT_SHARED_CLASSES)
    J9SharedClassJavacoreDataDescriptor _javacoreData;
 #endif

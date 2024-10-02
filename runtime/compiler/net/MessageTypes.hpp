@@ -295,6 +295,9 @@ enum MessageType : uint16_t
    AOTCacheMap_request,
    AOTCacheMap_reply,
 
+   CodeGenerator_assignKeepaliveConstRefLabels,
+   CodeGenerator_getConstProvenanceEdges,
+
    MessageType_MAXTYPE
    };
    extern const char *messageNames[];

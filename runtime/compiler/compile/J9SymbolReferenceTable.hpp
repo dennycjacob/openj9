@@ -504,6 +504,9 @@ class SymbolReferenceTable : public OMR::SymbolReferenceTableConnector
     */
    static const char *getNonHelperSymbolName(CommonNonhelperSymbol nonHelper);
 
+   // Overrides OMR::SymbolReferenceTable::flagConstRefSymbol().
+   void flagConstRefSymbol(void *addr, TR::Symbol *sym);
+
    protected:
 
    TR::Symbol                           *_currentThreadDebugEventDataSymbol;

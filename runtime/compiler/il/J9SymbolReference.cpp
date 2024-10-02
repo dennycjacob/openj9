@@ -46,7 +46,7 @@ SymbolReference::SymbolReference(
       mcount_t owningMethodIndex,
       int32_t cpIndex,
       int32_t unresolvedIndex,
-      TR::KnownObjectTable::Index knownObjectIndex)
+      KnownTempIndex knownObjectIndex)
    : OMR::SymbolReferenceConnector(
       symRefTab, sym, owningMethodIndex, cpIndex, unresolvedIndex, knownObjectIndex)
    {

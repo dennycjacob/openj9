@@ -268,6 +268,56 @@ void cleanUpJitArtifactSearchCache(J9VMThread *vmThread, J9JITExceptionTable *me
    return;
    }
 
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+void jitRemoveConstRefsFromBody(J9VMThread *vmThread, J9JITExceptionTable *metaData)
+   {
+   // NOTE: This could be relaxed in the future to require either:
+   // - exclusive VM access, or
+   // - regular VM access and no concurrent GC phase in progress.
+   J9JavaVM *vm = vmThread->javaVM;
+   TR_ASSERT_FATAL(
+      vm->exclusiveAccessState == J9_XACCESS_EXCLUSIVE,
+      "jitRemoveConstRefsFromBody: exclusive VM access is required");
+
+   J9ConstRefArray *origNode = metaData->constRefArrays;
+   if (origNode == NULL)
+      {
+      return;
+      }
+
+   omrthread_monitor_enter(vm->constRefsMutex);
+
+   J9ConstRefArray *node = NULL;
+   J9ConstRefArray *next = origNode->nextInJITBody;
+   bool done = false;
+   do
+      {
+      node = next;
+      next = node->nextInJITBody;
+      done = node == origNode;
+
+      TR_ASSERT_FATAL(
+         node->jitBodyMetaData == metaData,
+         "const ref array %p: expected JIT body metadata %p but found %p",
+         node,
+         metaData,
+         node->jitBodyMetaData);
+
+      J9ConstRefArray *classPrev = node->prevInClass;
+      J9ConstRefArray *classNext = node->nextInClass;
+      classPrev->nextInClass = classNext;
+      classNext->prevInClass = classPrev;
+
+      pool_removeElement(vm->constRefArrayPool, node);
+      }
+   while (!done);
+
+   omrthread_monitor_exit(vm->constRefsMutex);
+
+   metaData->constRefArrays = NULL;
+   }
+#endif // defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+
 void jitReleaseCodeCollectMetaData(J9JITConfig *jitConfig, J9VMThread *vmThread, J9JITExceptionTable *metaData, OMR::FaintCacheBlock *faintCacheBlock)
    {
    static const char *useOldRAReclaim = feGetEnv("TR_useOldRAReclaim");
@@ -298,6 +348,10 @@ void jitReleaseCodeCollectMetaData(J9JITConfig *jitConfig, J9VMThread *vmThread,
          // which means faintCacheBlock is NULL.
          markAssumptionsAndDetach(jitConfig, metaData, (NULL == faintCacheBlock));
          }
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+      jitRemoveConstRefsFromBody(vmThread, metaData);
+#endif
 
       artifactManager->removeArtifact(metaData);
       dispatchUnloadHooks(jitConfig, vmThread, metaData);

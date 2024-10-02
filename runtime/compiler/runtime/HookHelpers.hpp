@@ -33,6 +33,10 @@ struct J9JITConfig;
 struct J9JITExceptionTable;
 struct J9VMThread;
 
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+void jitRemoveConstRefsFromBody(J9VMThread *vmThread, J9JITExceptionTable *metaData);
+#endif
+
 void jitReleaseCodeCollectMetaData(J9JITConfig *jitConfig, J9VMThread *vmThread, J9JITExceptionTable *metaData, OMR::FaintCacheBlock* = 0);
 void jitRemoveAllMetaDataForClassLoader(J9VMThread * vmThread, J9ClassLoader * classLoader);
 void jitReclaimMarkedAssumptions(bool isEager);

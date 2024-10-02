@@ -38,6 +38,7 @@ namespace J9 { typedef J9::CodeGenerator CodeGeneratorConnector; }
 #include <stdint.h>
 #include "env/IO.hpp"
 #include "env/jittypes.h"
+#include "env/KnownObjectTable.hpp"
 #include "infra/List.hpp"
 #include "infra/HashTab.hpp"
 #include "infra/TRlist.hpp"
@@ -756,6 +757,28 @@ public:
       }
 #endif
 
+   // Overrides OMR::CodeGenerator::assignKeepaliveConstRefLabels().
+   void assignKeepaliveConstRefLabels();
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   // Overrides OMR::CodeGenerator::sortConstRefs().
+   void sortConstRefs();
+
+   void initConstRefs(J9JITExceptionTable *metaData);
+#endif
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE) && defined(J9VM_OPT_JITSERVER)
+   struct ConstRefInfo
+      {
+      TR::KnownObjectTable::Index _koi;
+      TR_OpaqueClassBlock *_owningClass;
+      uintptr_t _labelOffset;
+      };
+
+   void getConstRefInfoOnServer(std::vector<ConstRefInfo> &out);
+   void setConstRefInfoOnClient(const std::vector<ConstRefInfo> &info, uint8_t *startPC);
+#endif
+
 private:
 
 #if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
@@ -792,6 +815,9 @@ private:
 
 #if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
    InvokeBasicCallSiteList _invokeBasicCallSites;
+
+   // indexed by known object index
+   TR::vector<TR_OpaqueClassBlock*, TR::Region&> _constRefOwningClasses;
 #endif
    };
 }

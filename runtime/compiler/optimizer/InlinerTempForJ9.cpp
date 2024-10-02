@@ -6493,11 +6493,13 @@ TR_J9InlinerUtil::computePrexInfo(TR_InlinerBase *inliner, TR_CallSite* site, TR
          prexArg = new (inliner->trHeapMemory()) TR_PrexArgument(symRef->getKnownObjectIndex(), comp);
          logprintf(tracePrex, log, "PREX.inl:      %p: is symref known object obj%d\n", prexArg, symRef->getKnownObjectIndex());
          }
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
       else if (argument->hasKnownObjectIndex())
          {
          prexArg = new (inliner->trHeapMemory()) TR_PrexArgument(argument->getKnownObjectIndex(), comp);
          logprintf(tracePrex, log, "PREX.inl:      %p: is node known object obj%d\n", prexArg, argument->getKnownObjectIndex());
          }
+#endif
       else if (argument->getOpCodeValue() == TR::aload)
          {
          OMR::ParameterSymbol *parmSymbol = symbol->getParmSymbol();
@@ -6702,7 +6704,10 @@ void TR_J9InlinerUtil::checkForConstClass(TR_CallTarget *target, TR_LogTracer *t
          }
 
       if ((argument->getOpCode().hasSymbolReference() && (knownObjectClass || argument->getSymbolReference()->hasKnownObjectIndex()))
-          || argument->hasKnownObjectIndex())
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+          || argument->hasKnownObjectIndex()
+#endif
+          )
          {
          if (priorKnowledge < KNOWN_OBJECT)
             {
@@ -6711,11 +6716,13 @@ void TR_J9InlinerUtil::checkForConstClass(TR_CallTarget *target, TR_LogTracer *t
                {
                whence = "constant class";
                }
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
             else if (argument->hasKnownObjectIndex())
                {
                knownObjectIndex = argument->getKnownObjectIndex();
                whence = "node koi";
                }
+#endif
             else
                {
                knownObjectIndex = argument->getSymbolReference()->getKnownObjectIndex();

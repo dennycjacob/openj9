@@ -441,7 +441,8 @@ private:
       const TR::SegmentAllocator &scratchSegmentProvider,
       TR::Compilation * compiler,
       volatile bool & haveLockedClassUnloadMonitor,
-      const char *exceptionName
+      const char *exceptionName,
+      J9JITExceptionTable *metaData
       ) throw();
 
    void processExceptionCommonTasks(

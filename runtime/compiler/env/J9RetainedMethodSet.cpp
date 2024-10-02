@@ -390,6 +390,20 @@ J9::RetainedMethodSet::attestWillRemainLoaded(TR_ResolvedMethod *method)
    }
 
 void
+J9::RetainedMethodSet::attestWillRemainLoaded(TR_OpaqueClassBlock *clazz)
+   {
+   if (comp()->getOption(TR_TraceRetainedMethods))
+      {
+      int32_t len;
+      const char *name = TR::Compiler->cls.classNameChars(comp(), clazz, len);
+      OMR::Logger *log = comp()->log();
+      log->printf("RetainedMethodSet %p: attest class %p %.*s\n", this, clazz, len, name);
+      }
+
+   scan(TR::Compiler->cls.convertClassOffsetToClassPtr(clazz));
+   }
+
+void
 J9::RetainedMethodSet::scan(J9Class *clazz)
    {
    if (isAnonymousClass(clazz) && !willAnonymousClassRemainLoaded(clazz))
@@ -542,6 +556,12 @@ J9::RetainedMethodSet::willRemainLoaded(TR_ResolvedMethod *method)
    }
 
 bool
+J9::RetainedMethodSet::willRemainLoaded(TR_OpaqueClassBlock *clazz)
+   {
+   return willRemainLoaded(TR::Compiler->cls.convertClassOffsetToClassPtr(clazz));
+   }
+
+bool
 J9::RetainedMethodSet::willRemainLoaded(J9Class *clazz)
    {
    if (isAnonymousClass(clazz))
@@ -679,6 +699,11 @@ J9::RepeatRetainedMethodsAnalysis::getDataForClient(
    keepaliveMethods.clear();
    bondMethods.clear();
 
+   if (comp->clientAlreadyRepeatedRetainedMethodsAnalysis())
+      {
+      return; // no need to send this data; the client won't repeat analysis again
+      }
+
    uint32_t numInlinedSites = comp->getNumInlinedCallSites();
    for (uint32_t i = 0; i < numInlinedSites; i++)
       {
@@ -718,6 +743,37 @@ J9::RepeatRetainedMethodsAnalysis::getDataForClient(
       {
       bondMethods.push_back(
          static_cast<TR_ResolvedJ9JITServerMethod*>(bondMethod)->getRemoteMirror());
+      }
+   }
+
+void
+J9::RepeatRetainedMethodsAnalysis::getDataForClient(
+   TR::Compilation *comp,
+   std::vector<J9::ResolvedInlinedCallSite> &inliningTable,
+   std::vector<InlinedSiteInfo> &inlinedSiteInfo,
+   std::vector<TR_ResolvedMethod*> &keepaliveMethods,
+   std::vector<TR_ResolvedMethod*> &bondMethods)
+   {
+   getDataForClient(comp, inlinedSiteInfo, keepaliveMethods, bondMethods);
+
+   inliningTable.clear(); // just in case
+
+   if (comp->clientAlreadyRepeatedRetainedMethodsAnalysis())
+      {
+      return; // no need to send this data; the client won't repeat analysis again
+      }
+
+   uint32_t n = comp->getNumInlinedCallSites();
+   inliningTable.reserve(n);
+   for (uint32_t i = 0; i < n; i++)
+      {
+      TR_ResolvedMethod *method = comp->getInlinedResolvedMethod(i);
+      auto serverMethod = static_cast<TR_ResolvedJ9JITServerMethod*>(method);
+
+      J9::ResolvedInlinedCallSite site;
+      site._method = serverMethod->getRemoteMirror();
+      site._bci = comp->getInlinedCallSite(i)._byteCodeInfo;
+      inliningTable.push_back(site);
       }
    }
 
@@ -761,12 +817,19 @@ J9::RepeatRetainedMethodsAnalysis::analyzeOnClient(
    {
    TR_ASSERT_FATAL(comp->isRemoteCompilation(), "client only");
 
+   if (comp->clientRetainedMethods() != NULL)
+      {
+      // The repeat analysis has already run on the client.
+      return comp->clientRetainedMethods();
+      }
+
    if (!comp->mustTrackRetainedMethods())
       {
       // Use the base implementation (no tracking).
       OMR::RetainedMethodSet *result = new (comp->region())
          OMR::RetainedMethodSet(comp, comp->getMethodBeingCompiled(), NULL);
 
+      comp->setClientRetainedMethods(result);
       return result;
       }
 
@@ -879,6 +942,7 @@ J9::RepeatRetainedMethodsAnalysis::analyzeOnClient(
 
    assertSubset("bond", clientBondKeys, serverBondKeys);
 
+   comp->setClientRetainedMethods(root);
    return root;
    }
 

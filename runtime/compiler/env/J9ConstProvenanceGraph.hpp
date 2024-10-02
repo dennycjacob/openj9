@@ -28,6 +28,10 @@
 #include "infra/map.hpp"
 #include "infra/set.hpp"
 
+#if defined(J9VM_OPT_JITSERVER)
+#include <vector>
+#endif
+
 namespace TR { class Compilation; }
 class TR_ResolvedMethod;
 
@@ -101,7 +105,11 @@ class ConstProvenanceGraph
       PlaceKind_KnownObject,
       };
 
-   private: // TODO: will need to be made accessible for JITServer
+#if defined(J9VM_OPT_JITSERVER)
+   public:
+#else
+   private:
+#endif
 
    /**
     * \brief The internal representation of Place, for JITServer.
@@ -116,6 +124,17 @@ class ConstProvenanceGraph
          TR::KnownObjectTable::Index _knownObjectIndex;
          };
       };
+
+#if defined(J9VM_OPT_JITSERVER)
+   /**
+    * \brief An edge where the origin and referent are specified by RawPlace.
+    */
+   struct RawEdge
+      {
+      RawPlace origin;
+      RawPlace referent;
+      };
+#endif
 
    public:
 
@@ -238,7 +257,16 @@ class ConstProvenanceGraph
          return false;
          }
 
-      // TODO: to/from raw for JITServer
+#if defined(J9VM_OPT_JITSERVER)
+      static Place from_raw(RawPlace raw)
+         {
+         Place result;
+         result._raw = raw;
+         return result;
+         }
+
+      RawPlace to_raw() const { return _raw; }
+#endif
 
       private:
 
@@ -374,6 +402,33 @@ class ConstProvenanceGraph
    void trace(KnownObject koi);
    void trace(Place p);
 
+   void dumpDot(OMR::Logger *log);
+
+#if defined(J9VM_OPT_JITSERVER)
+   /**
+    * \brief Add to \p edges all edges that exist on the client.
+    *
+    * This may only be called on the client.
+    */
+   void getRawEdgesOnClient(std::vector<RawEdge> &edges);
+
+   /**
+    * \brief Add all edges from \p edges to this ConstProvenanceGraph.
+    *
+    * This may only be called on the server. The edges should have come from
+    * getRawEdgesOnClient().
+    */
+   void addRawEdgesOnServer(const std::vector<RawEdge> &edges);
+
+   /**
+    * \brief Determine whether we have already added the edges from the client
+    * in this compilation.
+    *
+    * \return true if it has already happened, false otherwise
+    */
+   bool hasServerAddedRawEdgesFromClient() { return _hasServerAddedRawEdgesFromClient; }
+#endif
+
    private:
 
    void addEdgeImpl(Place origin, Place referent);
@@ -385,6 +440,8 @@ class ConstProvenanceGraph
    static bool equals(const KnownObject &x, const KnownObject &y) { return x == y; }
    static bool equals(const KnownObject &x, void *y) { return false; }
    static bool equals(void *x, const KnownObject &y) { return false; }
+
+   void printDotPlaceName(OMR::Logger *log, Place p, bool label = false);
 
    bool isPermanentLoader(J9ClassLoader *loader);
    void assertValidPlace(Place p);
@@ -429,6 +486,10 @@ class ConstProvenanceGraph
    TR::map<Place, TR::set<Place>> _edges;
    const TR::set<Place> _emptyReferents;
    TR::set<std::pair<ArgKey, ArgKey>> _seenArgPairs;
+
+#if defined(J9VM_OPT_JITSERVER)
+   bool _hasServerAddedRawEdgesFromClient; // used on the server
+#endif
    };
 
 } // namespace J9

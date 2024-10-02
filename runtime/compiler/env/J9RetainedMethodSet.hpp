@@ -72,9 +72,11 @@ class RetainedMethodSet : public OMR::RetainedMethodSet
    virtual J9::RetainedMethodSet *createChild(TR_ResolvedMethod *method);
 
    virtual bool willRemainLoaded(TR_ResolvedMethod *method);
+   bool willRemainLoaded(TR_OpaqueClassBlock *clazz);
    bool willRemainLoaded(J9Class *clazz);
    bool willRemainLoaded(J9ClassLoader *loader);
    virtual J9::RetainedMethodSet *withLinkedCalleeAttested(TR_ByteCodeInfo bci);
+   void attestWillRemainLoaded(TR_OpaqueClassBlock *clazz);
    virtual void keepalive();
    virtual void bond();
    virtual J9::RetainedMethodSet *withKeepalivesAttested();

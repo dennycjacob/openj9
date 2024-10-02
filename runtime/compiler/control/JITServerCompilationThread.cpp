@@ -258,6 +258,11 @@ outOfProcessCompilationEnd(TR_MethodToBeCompiled *entry, TR::Compilation *comp)
       }
    else
       {
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+      std::vector<TR::CodeGenerator::ConstRefInfo> constRefInfo;
+      comp->cg()->getConstRefInfoOnServer(constRefInfo);
+#endif
+
       entry->_stream->finishCompilation(
          codeCacheStr, dataCacheStr, chTableData,
          std::vector<TR_OpaqueClassBlock*>(classesThatShouldNotBeNewlyExtended->begin(), classesThatShouldNotBeNewlyExtended->end()),
@@ -266,6 +271,9 @@ outOfProcessCompilationEnd(TR_MethodToBeCompiled *entry, TR::Compilation *comp)
             ? std::vector<TR_ResolvedJ9Method*>(resolvedMirrorMethodsPersistIPInfo->begin(), resolvedMirrorMethodsPersistIPInfo->end())
             : std::vector<TR_ResolvedJ9Method*>(),
          *entry->_optimizationPlan, serializedRuntimeAssumptions, memoryState, activeThreadState, methodsRequiringTrampolines
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+         , constRefInfo
+#endif
       );
       if (TR::Options::getVerboseOption(TR_VerboseJITServer))
          {

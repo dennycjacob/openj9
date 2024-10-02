@@ -61,6 +61,7 @@ TR_ResolvedJ9JITServerMethodInfoStruct
 
 // The last 3 strings are serialized versions of jittedBodyInfo, persistentMethodInfo and TR_ContiguousIPMethodHashTableInfo
 using TR_ResolvedJ9JITServerMethodInfo = std::tuple<TR_ResolvedJ9JITServerMethodInfoStruct, std::string, std::string, std::string>;
+using TR_ClientBondMethod = std::tuple<TR_OpaqueMethodBlock*, TR_ResolvedJ9JITServerMethodInfo>;
 
 // key used to identify a resolved method in resolved methods cache.
 // Since one cache contains different types of resolved methods, need to uniquely identify
@@ -235,6 +236,8 @@ public:
    int32_t collectImplementorsCapped(TR_OpaqueClassBlock *topClass, int32_t maxCount, int32_t cpIndexOrOffset, TR_YesNoMaybe useGetResolvedInterfaceMethod, TR_ResolvedMethod **implArray);
    bool isLambdaFormGeneratedMethod() { return _isLambdaFormGeneratedMethod; }
    static void packMethodInfo(TR_ResolvedJ9JITServerMethodInfo &methodInfo, TR_ResolvedJ9Method *resolvedMethod, TR_FrontEnd *fe);
+   static void getClientBondMethodsToSendToServer(
+      TR::Compilation *comp, std::vector<TR_ClientBondMethod> &dest);
 
 protected:
    JITServer::ServerStream *_stream;
