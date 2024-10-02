@@ -400,6 +400,12 @@ class OMR_EXTENSIBLE Compilation : public OMR::CompilationConnector
    // fails the compilation entirely.
    void addThunkRecord(const AOTCacheThunkRecord *record);
 
+   bool clientAlreadyRepeatedRetainedMethodsAnalysis();
+   void setClientAlreadyRepeatedRetainedMethodsAnalysis();
+   OMR::RetainedMethodSet *clientRetainedMethods();
+   void setClientRetainedMethods(OMR::RetainedMethodSet *root);
+   const TR::vector<TR_ResolvedMethod*, TR::Region&> &bondMethodsFromClient(); // used on the server
+   void addBondMethodFromClient(TR_ResolvedMethod *m); // used on the server
 #else
    bool isDeserializedAOTMethod() const { return false; }
    bool ignoringLocalSCC() const { return false; }
@@ -549,6 +555,19 @@ class OMR_EXTENSIBLE Compilation : public OMR::CompilationConnector
     * \return a vector of pointers to all known-permanent class loaders
     */
    const TR::vector<J9ClassLoader*, TR::Region&> &permanentLoaders();
+
+   /**
+    * \brief Determine whether this compilation crashed due to orphaned const refs.
+    * \return true if it did and false otherwise
+    */
+   bool crashedDueToOrphanedConstRefs() { return _crashedDueToOrphanedConstRefs; }
+
+   /**
+    * \brief Declare that this compilation is crashing due to orphaned const refs.
+    *
+    * The caller must be just about to crash in this way.
+    */
+   void setCrashedDueToOrphanedConstRefs() { _crashedDueToOrphanedConstRefs = true; }
 
 private:
    enum CachedClassPointerId
@@ -720,9 +739,20 @@ private:
    // For the server, the number of permanent loaders the client has specified
    // we must use for this compilation.
    size_t _numPermanentLoaders;
+
+   // True on the server if a message has already been sent to the client that
+   // caused it to do its repeat retained methods inlining analysis.
+   bool _clientAlreadyRepeatedRetainedMethodsAnalysis;
+
+   // On the client, the root retained method set from the repeat inlining analysis.
+   OMR::RetainedMethodSet *_clientRetainedMethods;
+
+   // Bond methods from the client, used for assigning owning classes to const
+   // refs on the server.
+   TR::vector<TR_ResolvedMethod*, TR::Region&> _bondMethodsFromClient;
+#endif /* defined(J9VM_OPT_JITSERVER) */
    // Records whether any vectorization optimizations have taken place
    // in the compilation.
-#endif /* defined(J9VM_OPT_JITSERVER) */
    bool _vectorApiTransformationPerformed;
 
 #if !defined(PERSISTENT_COLLECTIONS_UNSUPPORTED)
@@ -739,6 +769,7 @@ private:
    bool _osrProhibitedOverRangeOfTrees;
    bool _wasFearPointAnalysisDone;
    bool _permanentLoadersInitialized;
+   bool _crashedDueToOrphanedConstRefs;
    };
 
 }

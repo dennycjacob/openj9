@@ -27,6 +27,7 @@
 #include "control/JITServerHelpers.hpp"
 #include "control/MethodToBeCompiled.hpp"
 #include "env/J9ConstProvenanceGraph.hpp"
+#include "env/OMRRetainedMethodSet.hpp"
 #include "env/VMJ9Server.hpp"
 #include "exceptions/DataCacheError.hpp"
 #include "ilgen/J9ByteCodeIterator.hpp"
@@ -1671,6 +1672,32 @@ TR_ResolvedJ9JITServerMethod::unpackMethodInfo(TR_OpaqueMethodBlock * aMethod, T
    JITServerIProfiler *iProfiler = (JITServerIProfiler *) ((TR_J9VMBase *) fe)->getIProfiler();
    const std::string &entryStr = std::get<3>(methodInfo);
    _faninSummaryInfo = iProfiler ? iProfiler->cacheFaninDataForMethod((TR_OpaqueMethodBlock*)_ramMethod, entryStr, fe, trMemory) : NULL;
+   }
+
+void
+TR_ResolvedJ9JITServerMethod::getClientBondMethodsToSendToServer(
+   TR::Compilation *comp, std::vector<TR_ClientBondMethod> &dest)
+   {
+   TR_ASSERT_FATAL(comp->isRemoteCompilation(), "client only");
+
+   // We send these to the server after the repeat retained methods analysis so
+   // that we can ensure that the server will assign all keepalives to either
+   // the outermost method or a bond method chosen by the client, i.e. one for
+   // which an actual unload assumption will be created. The server's set of
+   // bond methods is different from the client's, and it derives from a
+   // superset of the inlined sites used for bonds at the client.
+
+   dest.clear();
+
+   TR_ResolvedMethod *bondMethod = NULL;
+   auto iter = comp->clientRetainedMethods()->bondMethods();
+   while (iter.next(&bondMethod))
+      {
+      TR_ResolvedJ9JITServerMethodInfo info;
+      packMethodInfo(info, static_cast<TR_ResolvedJ9Method *>(bondMethod), comp->fe());
+      TR_OpaqueMethodBlock *m = bondMethod->getNonPersistentIdentifier();
+      dest.push_back(std::make_tuple(m, info));
+      }
    }
 
 bool

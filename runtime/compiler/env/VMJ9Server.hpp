@@ -270,6 +270,9 @@ public:
    virtual TR_OpaqueClassBlock *getArrayClassFromDataType(TR::DataType type, bool booleanClass) override;
    virtual uint32_t numInterfacesImplemented(J9Class *clazz) override;
 
+   void addBondMethodsFromClient(
+      TR::Compilation *comp, const std::vector<TR_ClientBondMethod> &methods);
+
 private:
    bool instanceOfOrCheckCastHelper(J9Class *instanceClass, J9Class* castClass, bool cacheUpdate);
    bool checkCHTableIfClassInfoExistsAndHasBeenExtended(TR_OpaqueClassBlock *clazz, bool &bClassHasBeenExtended);

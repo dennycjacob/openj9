@@ -407,8 +407,11 @@ private:
    bool hasFPU();
 
    bool pushRequiredConst(TR::KnownObjectTable::Index *koi);
-   void markRequiredKnownObjectIndex(TR::Node *node, TR::KnownObjectTable::Index koi);
    void assertFoldedAllRequiredConsts();
+
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+   void markRequiredKnownObjectIndex(TR::Node *node, TR::KnownObjectTable::Index koi);
+#endif
 
    /**
     * Answers whether some path through predecessors of a block contains a \ref TR::monent

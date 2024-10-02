@@ -262,6 +262,8 @@ const char *messageNames[] =
    "AOTCache_getRAMClassFromClassRecordBatch",
    "AOTCacheMap_request",
    "AOTCacheMap_reply",
+   "CodeGenerator_assignKeepaliveConstRefLabels",
+   "CodeGenerator_getConstProvenanceEdges",
    };
 
    static_assert(sizeof(messageNames) / sizeof(messageNames[0]) == MessageType_MAXTYPE,

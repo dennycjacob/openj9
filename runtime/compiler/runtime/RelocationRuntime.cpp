@@ -492,6 +492,15 @@ TR_RelocationRuntime::prepareRelocateAOTCodeAndData(J9VMThread* vmThread,
 
    if (haveReservedCodeCache())
       codeCache()->unreserve();
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   TR_ASSERT_FATAL(
+      _exceptionTable == NULL || _exceptionTable->constRefArrays == NULL,
+      "unexpected const ref array %p for J9JITExceptionTable %p",
+      _exceptionTable->constRefArrays,
+      _exceptionTable);
+#endif
+
    return _exceptionTable;
    }
 

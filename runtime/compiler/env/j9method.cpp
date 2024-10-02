@@ -9874,11 +9874,13 @@ TR_J9ByteCodeIlGenerator::runFEMacro(TR::SymbolReference *symRef)
                      // would have the effect of hard-coding the object identities
                      // into the jitted code, which would make it unshareable.
                      }
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
                   else
                      {
                      TR::SymbolReference *improvedSymbol = comp()->getSymRefTab()->findOrCreateSymRefWithKnownObject(receiverHandle->getSymbolReference(), filterIndexList[arrayIndex]);
                      receiverHandle->setSymbolReference(improvedSymbol);
                      }
+#endif
                   }
 
                // Second arg: incoming unfiltered arg is a child of the placeholder call

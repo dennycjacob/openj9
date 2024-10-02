@@ -27,6 +27,7 @@
 #endif
 
 #include <algorithm>
+#include "AtomicSupport.hpp"
 #include "codegen/AheadOfTimeCompile.hpp"
 #include "codegen/CodeGenerator.hpp"
 #include "codegen/CodeGenerator_inlines.hpp"
@@ -46,6 +47,8 @@
 #include "env/jittypes.h"
 #include "env/j9method.h"
 #include "env/OMRRetainedMethodSet.hpp"
+#include "env/J9RetainedMethodSet.hpp"
+#include "env/J9ConstProvenanceGraph.hpp"
 #include "il/AutomaticSymbol.hpp"
 #include "il/Block.hpp"
 #include "il/LabelSymbol.hpp"
@@ -59,6 +62,7 @@
 #include "infra/BitVector.hpp"
 #include "infra/ILWalk.hpp"
 #include "infra/List.hpp"
+#include "infra/String.hpp"
 #include "optimizer/Structure.hpp"
 #include "optimizer/TransformUtil.hpp"
 #include "ras/Delimiter.hpp"
@@ -69,6 +73,10 @@
 #include "runtime/CodeCacheManager.hpp"
 #include "env/CHTable.hpp"
 #include "env/PersistentCHTable.hpp"
+
+#if defined(J9VM_OPT_JITSERVER)
+#include "env/RepeatRetainedMethodsAnalysis.hpp"
+#endif
 
 #define OPT_DETAILS "O^O CODE GENERATION: "
 
@@ -85,6 +93,7 @@ J9::CodeGenerator::CodeGenerator(TR::Compilation *comp) :
    _dummyTempStorageRefNode(NULL)
 #if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
    , _invokeBasicCallSites(comp->region())
+   , _constRefOwningClasses(comp->region())
 #endif
    {
    /**
@@ -5379,3 +5388,990 @@ J9::CodeGenerator::addInvokeBasicCallSiteImpl(
    _invokeBasicCallSites.push_back(site);
    }
 #endif // defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+
+void
+J9::CodeGenerator::assignKeepaliveConstRefLabels()
+   {
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   OMR::Logger *log = comp()->log();
+   bool trace = comp()->getOption(TR_TraceOptDetails) || comp()->getOption(TR_TraceCG);
+   logprints(trace, log, "\ndetermining final set of keepalive classes\n");
+
+   if (!comp()->useConstRefs())
+      {
+      // Keepalives are implemented in terms of const refs.
+      logprints(trace, log, "no keepalives without const refs\n\n");
+      return;
+      }
+
+   TR::KnownObjectTable *knot = comp()->getKnownObjectTable();
+   TR_ASSERT_FATAL(
+      knot == NULL || knot->isNull(0),
+      "expected index zero to be reserved for null");
+
+   if (knot == NULL || knot->getEndIndex() <= 1)
+      {
+      // No keepalives are needed if we didn't fold through known objects. Don't
+      // assert that there are no keepalives though. Redundant keepalives might
+      // have been conservatively requested.
+      logprints(trace, log, "no known objects => no keepalives needed\n\n");
+      return;
+      }
+
+   if (comp()->getOption(TR_NoClassGC))
+      {
+      logprints(trace, log, "no class unloading => no keepalives needed\n\n");
+      return;
+      }
+
+   if (comp()->getOption(TR_AllowJitBodyToOutliveInlinedCode))
+      {
+      logprints(trace, log, "allowJitBodyToOutliveInlinedCode => no keepalives needed\n\n");
+      return;
+      }
+
+   // mustTrackRetainedMethods() should be guaranteed by the above early exits.
+   // In particular:
+   // - There are known objects, so this is not an AOT compilation.
+   // - Dynamic class unloading is enabled.
+   // - The allowJitBodyToOutliveInlinedCode option is not set.
+   //
+   // We need mustTrackRetainedMethods() to be true because the logic below
+   // requires J9::RetainedMethodSet.
+   //
+   TR_ASSERT_FATAL(
+      comp()->mustTrackRetainedMethods(),
+      "retained method tracking is required to determine keepalives");
+
+   OMR::RetainedMethodSet *omrRetainedMethods = NULL;
+#if defined(J9VM_OPT_JITSERVER)
+   if (comp()->isRemoteCompilation())
+      {
+      omrRetainedMethods = comp()->clientRetainedMethods();
+      TR_ASSERT_FATAL(
+         omrRetainedMethods != NULL,
+         "client must have done the repeat retained methods analysis by now");
+      }
+   else
+#endif
+      {
+      omrRetainedMethods = comp()->retainedMethods();
+      }
+
+   // It must be a J9::RetainedMethodSet because comp()->mustTrackRetainedMethods().
+   auto retainedMethods = static_cast<J9::RetainedMethodSet*>(omrRetainedMethods);
+
+   TR_ResolvedMethod *m = NULL;
+   if (comp()->keepaliveClasses().empty()
+       && !retainedMethods->keepaliveMethods().next(&m))
+      {
+      logprints(trace, log, "no keepalives requested\n\n");
+      return;
+      }
+
+   m = NULL;
+
+#if defined(J9VM_OPT_JITSERVER)
+   if (comp()->isOutOfProcessCompilation())
+      {
+      // At this point, we can't avoid a round trip. Keepalives have been
+      // requested, and all requested keepalives that aren't redundant are
+      // required. To determine which requested keepalives are redundant, the
+      // client must do its repeat retained methods analysis of the inlining
+      // table.
+      //
+      // We could skip detecting redundant keepalives, avoiding the need to do
+      // the repeat analysis here, but that would just make all requested
+      // keepalives required. Then it would be necessary to get their
+      // java/lang/Class instances, which would itself take a round trip.
+      //
+      std::vector<TR::KnownObjectTable::Index> constRefKois;
+      for (TR::KnownObjectTable::Index koi = 1; koi < knot->getEndIndex(); koi++)
+         {
+         if (self()->getConstRefLabel(koi) != NULL)
+            {
+            constRefKois.push_back(koi);
+            }
+         }
+
+      auto &keepaliveClassSet = comp()->keepaliveClasses();
+      std::vector<TR_OpaqueClassBlock*> keepaliveClasses;
+      for (auto it = keepaliveClassSet.begin(); it != keepaliveClassSet.end(); it++)
+         {
+         keepaliveClasses.push_back(*it);
+         }
+
+      std::vector<J9::ResolvedInlinedCallSite> inliningTable;
+      std::vector<J9::RepeatRetainedMethodsAnalysis::InlinedSiteInfo> inlinedSiteInfo;
+      std::vector<TR_ResolvedMethod*> keepaliveMethods;
+      std::vector<TR_ResolvedMethod*> bondMethods;
+      J9::RepeatRetainedMethodsAnalysis::getDataForClient(
+         comp(), inliningTable, inlinedSiteInfo, keepaliveMethods, bondMethods);
+
+      JITServer::ServerStream *stream = comp()->getStream();
+      stream->write(
+         JITServer::MessageType::CodeGenerator_assignKeepaliveConstRefLabels,
+         constRefKois,
+         keepaliveClasses,
+         inliningTable,
+         inlinedSiteInfo,
+         keepaliveMethods,
+         bondMethods);
+
+      comp()->setClientAlreadyRepeatedRetainedMethodsAnalysis();
+
+      auto recv = stream->read<
+         std::vector<std::tuple<TR::KnownObjectTable::Index, uintptr_t*>>,
+         std::vector<TR::KnownObjectTable::Index>,
+         std::vector<J9::ConstProvenanceGraph::RawEdge>,
+         std::vector<TR_ClientBondMethod>
+      >();
+
+      auto &newKnownObjects = std::get<0>(recv);
+      auto &oldKnobKeepalives = std::get<1>(recv);
+      auto &provenanceEdges = std::get<2>(recv);
+      auto &clientBondMethods = std::get<3>(recv);
+
+      for (auto it = newKnownObjects.begin(); it != newKnownObjects.end(); it++)
+         {
+         TR::KnownObjectTable::Index koi = std::get<0>(*it);
+         uintptr_t *loc = std::get<1>(*it);
+         knot->updateKnownObjectTableAtServer(koi, loc);
+         assignNewConstRefLabel(koi);
+         }
+
+      for (auto it = oldKnobKeepalives.begin(); it != oldKnobKeepalives.end(); it++)
+         {
+         assignNewConstRefLabel(*it);
+         }
+
+      comp()->constProvenanceGraph()->addRawEdgesOnServer(provenanceEdges);
+
+      ((TR_J9ServerVM*)comp()->fej9())->addBondMethodsFromClient(
+         comp(), clientBondMethods);
+
+      return;
+      }
+#endif // defined(J9VM_OPT_JITSERVER)
+
+   // First take account of the fact that the const refs we need anyway could
+   // make one or more keepalives redundant.
+   retainedMethods = retainedMethods->withBondsAttested();
+
+   TR::VMAccessCriticalSection addKeepalivesCS(comp()->fej9());
+
+   // We can't use _constRefSortOrder because it isn't populated yet.
+   for (TR::KnownObjectTable::Index koi = 0; koi < knot->getEndIndex(); koi++)
+      {
+      if (self()->getConstRefLabel(koi) == NULL)
+         {
+         continue;
+         }
+
+      uintptr_t obj = comp()->getKnownObjectTable()->getPointer(koi);
+      TR_OpaqueClassBlock *clazz = comp()->fej9()->getObjectClass(obj);
+      if (clazz == comp()->getClassClassPointer())
+         {
+         clazz = TR::Compiler->cls.classFromJavaLangClass(comp(), obj);
+         }
+
+      retainedMethods->attestWillRemainLoaded(clazz);
+      }
+
+   // Determine the full set of keepalive classes. These are the compilation's
+   // keepalive classes due to IL transformations plus the defining classes of
+   // the root retained method set's keepalive methods.
+   //
+   // Redundant classes (already guaranteed by a bond, a const ref, or another
+   // keepalive) will be omitted. However, no attempt is made to find a minimal
+   // set, since that could be computationally expensive.
+   //
+   TR::list<TR_OpaqueClassBlock*, TR::Region&> classes(
+      comp()->trMemory()->currentStackRegion());
+
+   auto keepaliveMethods = retainedMethods->keepaliveMethods();
+   while (keepaliveMethods.next(&m))
+      {
+      bool redundant = retainedMethods->willRemainLoaded(m);
+      logprintf(
+         trace, log,
+         "keepalive method %p%s\n",
+         m->getNonPersistentIdentifier(),
+         redundant ? " is redundant" : "");
+
+      if (redundant)
+         {
+         continue;
+         }
+
+      TR_OpaqueClassBlock *c = m->containingClass();
+      classes.push_back(c);
+      retainedMethods->attestWillRemainLoaded(c);
+      }
+
+   const auto &keepaliveClasses = comp()->keepaliveClasses();
+   for (auto it = keepaliveClasses.begin(); it != keepaliveClasses.end(); it++)
+      {
+      TR_OpaqueClassBlock *c = *it;
+      bool redundant = retainedMethods->willRemainLoaded(c);
+      logprintf(trace, log, "keepalive class %p%s\n", c, redundant ? " is redundant" : "");
+      if (redundant)
+         {
+         continue;
+         }
+
+      classes.push_back(c);
+      retainedMethods->attestWillRemainLoaded(c);
+      }
+
+   // For each keepalive class, add the corresponding java/lang/Class instance
+   // to the known object table and assign it a snippet label. This label won't
+   // be used by any instructions, since the keepalive reference isn't loaded
+   // anywhere. (If it were loaded, the class would have been attested above,
+   // and the keepalive would have been ignored as redundant.) So the label is
+   // only there to flag that const refs should be generated for these objects
+   // (for GC to scan).
+   if (classes.empty())
+      {
+      logprints(trace, log, "no keepalives\n");
+      }
+
+   for (auto it = classes.begin(); it != classes.end(); it++)
+      {
+      TR_OpaqueClassBlock *c = *it;
+      J9Class *j9c = TR::Compiler->cls.convertClassOffsetToClassPtr(*it);
+      uintptr_t classObj = (uintptr_t)j9c->classObject;
+      TR::KnownObjectTable::Index koi = knot->getOrCreateIndex(classObj);
+
+      int32_t len;
+      const char *name = TR::Compiler->cls.classNameChars(comp(), c, len);
+      logprintf(trace, log, "keepalive obj%d java/lang/Class of %p %.*s\n", koi, c, len, name);
+
+      J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
+      cpg->addEdge(c, cpg->knownObject(koi));
+
+      // Assign a new label. There must not already be one. (See the reasoning
+      // above for why the keepalive object is not loaded anywhere.)
+      assignNewConstRefLabel(koi);
+      }
+
+   logprintln(trace, log);
+#endif // defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   }
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+
+namespace { // file-local
+
+struct CPGSearchState
+   {
+   typedef J9::ConstProvenanceGraph::Place Place;
+
+   TR::Compilation * const _comp;
+   J9::ConstProvenanceGraph * const _cpg;
+   TR::vector<Place, TR::Region&> _queue; // vector works well for LIFO
+   TR::set<Place> _seen;
+   TR::vector<TR_OpaqueClassBlock*, TR::Region&> &_constRefOwningClasses;
+   TR_OpaqueClassBlock *_firstSpecificOwningClass;
+   const bool _trace;
+
+   CPGSearchState(
+      TR::Compilation *comp,
+      TR::vector<TR_OpaqueClassBlock*, TR::Region&> &constRefOwningClasses);
+
+   void search(Place root, TR_OpaqueClassBlock *owningClass);
+   void enqueue(Place p, TR_OpaqueClassBlock *owningClass);
+   };
+
+CPGSearchState::CPGSearchState(
+   TR::Compilation *comp,
+   TR::vector<TR_OpaqueClassBlock*, TR::Region&> &constRefOwningClasses)
+   : _comp(comp)
+   , _cpg(comp->constProvenanceGraph())
+   , _queue(comp->trMemory()->currentStackRegion())
+   , _seen(comp->trMemory()->currentStackRegion())
+   , _constRefOwningClasses(constRefOwningClasses)
+   , _firstSpecificOwningClass(NULL)
+   , _trace(comp->getOption(TR_TraceCG) || _cpg->trace())
+   {
+   // empty
+   }
+
+void
+CPGSearchState::search(Place root, TR_OpaqueClassBlock *owningClass)
+   {
+   TR_ASSERT_FATAL(_queue.empty(), "queue should be empty");
+
+   enqueue(root, owningClass);
+   while (!_queue.empty())
+      {
+      // Order doesn't matter for determining reachability so do depth-first
+      // because LIFO is efficient.
+      J9::ConstProvenanceGraph::Place p = _queue.back();
+      _queue.pop_back();
+      auto referents = _cpg->referents(p);
+      for (auto it = referents.begin(); it != referents.end(); it++)
+         {
+         enqueue(*it, owningClass);
+         }
+      }
+   }
+
+void
+CPGSearchState::enqueue(Place p, TR_OpaqueClassBlock *owningClass)
+   {
+   if (_seen.count(p) != 0)
+      {
+      return;
+      }
+
+   OMR::Logger *log = _comp->log();
+   if (_trace)
+      {
+      log->prints("  reachable: ");
+      _cpg->trace(p);
+      log->println();
+      }
+
+   _queue.push_back(p);
+   _seen.insert(p);
+   if (p.kind() == J9::ConstProvenanceGraph::PlaceKind_KnownObject)
+      {
+      TR::KnownObjectTable::Index koi = p.getKnownObject();
+      if (_comp->cg()->getConstRefLabel(koi) != NULL)
+         {
+         _constRefOwningClasses[koi] = owningClass;
+         if (_firstSpecificOwningClass == NULL && owningClass != NULL)
+            {
+            _firstSpecificOwningClass = owningClass;
+            }
+         }
+      }
+   }
+
+} // anonymous namespace
+
+void
+J9::CodeGenerator::sortConstRefs()
+   {
+   typedef J9::ConstProvenanceGraph::Place Place;
+
+   if (!self()->hasConstRefs())
+      {
+      return;
+      }
+
+   TR_ASSERT_FATAL(
+      comp()->useConstRefs(),
+      "const refs exist even though they are not enabled");
+
+   TR::KnownObjectTable *knot = comp()->getKnownObjectTable();
+   TR::KnownObjectTable::Index knotEnd = knot->getEndIndex();
+   _constRefOwningClasses.reserve(knotEnd);
+   for (TR::KnownObjectTable::Index i = 0; i < knotEnd; i++)
+      {
+      _constRefOwningClasses.push_back(NULL);
+      }
+
+   CPGSearchState state(comp(), _constRefOwningClasses);
+   J9::ConstProvenanceGraph *cpg = state._cpg;
+   OMR::Logger *log = comp()->log();
+   bool trace = state._trace;
+
+   TR_ResolvedMethod *outermostMethod = comp()->getMethodBeingCompiled();
+   TR_OpaqueClassBlock *outermostClass = outermostMethod->classOfMethod();
+
+   if (!cpg->isConstProvenanceEnabled())
+      {
+      // No const provenance. It's either unnecessary or disabled by option.
+      logprints(
+         trace, log,
+         "const provenance is disabled\n"
+         "assign all const refs to the class of the outermost method\n");
+
+      for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+         {
+         _constRefOwningClasses[*it] = outermostClass;
+         }
+      }
+   else
+      {
+#if defined(J9VM_OPT_JITSERVER)
+      if (comp()->isOutOfProcessCompilation())
+         {
+         // The client most likely has const provenance edges that we don't
+         // have on the server. Get the edges from the client to ensure that we
+         // have the full graph to search.
+         if (!cpg->hasServerAddedRawEdgesFromClient())
+            {
+            std::vector<J9::ResolvedInlinedCallSite> inliningTable;
+            std::vector<J9::RepeatRetainedMethodsAnalysis::InlinedSiteInfo> inlinedSiteInfo;
+            std::vector<TR_ResolvedMethod*> keepaliveMethods;
+            std::vector<TR_ResolvedMethod*> bondMethods;
+            J9::RepeatRetainedMethodsAnalysis::getDataForClient(
+               comp(), inliningTable, inlinedSiteInfo, keepaliveMethods, bondMethods);
+
+            JITServer::ServerStream *stream = comp()->getStream();
+            stream->write(
+               JITServer::MessageType::CodeGenerator_getConstProvenanceEdges,
+               inliningTable,
+               inlinedSiteInfo,
+               keepaliveMethods,
+               bondMethods);
+
+            comp()->setClientAlreadyRepeatedRetainedMethodsAnalysis();
+
+            auto recv = stream->read<
+               std::vector<J9::ConstProvenanceGraph::RawEdge>,
+               std::vector<TR_ClientBondMethod>
+            >();
+
+            auto &clientEdges = std::get<0>(recv);
+            auto &clientBondMethods = std::get<1>(recv);
+
+            cpg->addRawEdgesOnServer(clientEdges);
+            ((TR_J9ServerVM*)comp()->fej9())->addBondMethodsFromClient(
+               comp(), clientBondMethods);
+            }
+         }
+#endif
+
+      if (trace)
+         {
+         cpg->dumpDot(log);
+         }
+
+      // First search for all known objects reachable from permanent roots.
+      // Const refs for these can be attributed to any class.
+      logprints(
+         trace, log,
+         "assigning const refs to classes based on const provenance\n"
+         "\nsearch graph from permanent roots\n");
+
+      state.search(Place::makePermanentRoot(), NULL);
+
+      // Next search starting from the outermost method.
+      if (trace)
+         {
+         log->prints("\nsearch graph from outermost ");
+         cpg->trace(outermostMethod);
+         log->println();
+         }
+
+      state.search(cpg->place(outermostMethod), outermostClass);
+
+      // Finally, search starting from inlined methods.
+      if (comp()->mustTrackRetainedMethods())
+         {
+         // This is the usual case. Search from each bond method.
+         //
+         // It's important that all const refs (or at least all keepalives) be
+         // owned by the class of either the outermost method or a bond method.
+         // This way, if this JIT body will survive a GC cycle without getting
+         // invalidated by a bond unload assumption, then (the classes of) the
+         // outermost method and all bond methods are live. Because all of the
+         // keepalives are owned by one of those, the keepalives are all live
+         // as well, which means that all inlined methods are live.
+         //
+
+         TR::vector<TR_ResolvedMethod*, TR::Region&> localBondMethods(
+            comp()->trMemory()->currentStackRegion());
+
+         const TR::vector<TR_ResolvedMethod*, TR::Region&> *bondMethods = NULL;
+#if defined(J9VM_OPT_JITSERVER)
+         if (comp()->isOutOfProcessCompilation())
+            {
+            bondMethods = &comp()->bondMethodsFromClient();
+            }
+         else
+#endif
+            {
+            auto iter = comp()->retainedMethods()->bondMethods();
+            TR_ResolvedMethod *m = NULL;
+            while (iter.next(&m))
+               {
+               localBondMethods.push_back(m);
+               }
+
+            bondMethods = &localBondMethods;
+            }
+
+         for (auto it = bondMethods->begin(), end = bondMethods->end(); it != end; it++)
+            {
+            TR_ResolvedMethod *bondMethod = *it;
+            if (trace)
+               {
+               log->prints("\nsearch graph from bond ");
+               cpg->trace(bondMethod);
+               log->println();
+               }
+
+            state.search(cpg->place(bondMethod), bondMethod->classOfMethod());
+            }
+         }
+      else
+         {
+         // No retained method tracking in this compilation. Because const
+         // provenance is enabled, this should only ever be due to
+         // -Xjit:allowJitBodyToOutliveInlinedCode.
+         TR_ASSERT_FATAL(
+            comp()->getOption(TR_AllowJitBodyToOutliveInlinedCode),
+            "const provenance without retained method tracking must be due to "
+            "allowJitBodyToOutliveInlinedCode");
+
+         logprints(trace, log, "\nJIT body is allowed to outlive inlined methods\n");
+
+         // There are no bonds or keepalives. Search from every inlined method.
+         //
+         // If a known object must be attributed to an inlined method, it's
+         // possible that that inlined method could be unloaded before the
+         // outermost method. However, if that happens, and if the JIT body is
+         // re-entered afterward, at that point the body is allowed to be
+         // incorrect because allowJitBodyToOutliveInlinedCode was specified.
+         // In particular, in that scenario it's OK that the const ref will
+         // have disappeared even though not all of its uses are necessarily
+         // guarded.
+         //
+         uint32_t numInlinedCallSites = comp()->getNumInlinedCallSites();
+         for (uint32_t i = 0; i < numInlinedCallSites; i++)
+            {
+            TR_ResolvedMethod *m = comp()->getInlinedResolvedMethod(i);
+            if (trace)
+               {
+               log->prints("\nsearch graph from inlined ");
+               cpg->trace(m);
+               log->println();
+               }
+
+            state.search(cpg->place(m), m->classOfMethod());
+            }
+         }
+
+      // Check for orphaned const refs (whose known object was not found).
+      // These are a problem because we don't know an acceptable owning class.
+      // Usually this will cause an assertion failure, but there are two JIT
+      // options that request more graceful handling:
+      // - orphanedConstRefs=top: Assume they're reachable from the outermost method.
+      // - orphanedConstRefs=fail: Fail the compilation.
+      //
+      // This is done in a separate pass so that if there's a log file, all
+      // unreachable known objects will be logged before the compilation ends.
+      //
+      // Really, all known objects should have been seen, but we only require
+      // the ones that will become const refs.
+      //
+      char orphansMem[256];
+      TR::Region &stackRegion = comp()->trMemory()->currentStackRegion();
+      TR::StringBuf orphans(stackRegion, orphansMem, sizeof(orphansMem));
+
+      bool alreadyLoggedUnreachable = false;
+      for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+         {
+         TR::KnownObjectTable::Index koi = *it;
+         if (state._seen.count(Place::makeKnownObject(koi)) != 0)
+            {
+            continue;
+            }
+
+         if (trace || comp()->getOptions()->getAnyOption(TR_TraceAll))
+            {
+            const char *blank = alreadyLoggedUnreachable ? "" : "\n";
+            alreadyLoggedUnreachable = true;
+            log->printf("%s!!! const provenance: obj%d is unreachable\n", blank, koi);
+            }
+
+         if (comp()->getOption(TR_OrphanedConstRefsTop))
+            {
+            _constRefOwningClasses[koi] = outermostClass;
+            if (state._firstSpecificOwningClass == NULL)
+               {
+               state._firstSpecificOwningClass = outermostClass;
+               }
+            }
+         else
+            {
+            const char *comma = orphans.len() == 0 ? "" : ", ";
+            orphans.appendf("%sobj%d", comma, koi);
+            }
+         }
+
+      if (orphans.len() != 0)
+         {
+         if (comp()->getOption(TR_OrphanedConstRefsFail))
+            {
+            comp()->failCompilation<TR::CompilationException>("orphaned const refs");
+            }
+         else
+            {
+            // jitdump will enable traceRetainedMethods and traceConstProvenance.
+            comp()->setCrashedDueToOrphanedConstRefs();
+            TR_ASSERT_FATAL(
+               false,
+               "orphaned const refs: %s\n"
+               "\tthe const provenance graph is missing at least one edge",
+               orphans.text());
+            }
+         }
+
+      // Finally, assign an owning class to the const refs whose known objects
+      // were reachable from permanent roots. These can be owned by any class.
+      // Use a class that has already been assigned const refs if possible.
+      TR_OpaqueClassBlock *permanentObjOwningClass = state._firstSpecificOwningClass;
+      if (permanentObjOwningClass == NULL)
+         {
+         permanentObjOwningClass = outermostClass;
+         }
+
+      for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+         {
+         TR::KnownObjectTable::Index koi = *it;
+         if (_constRefOwningClasses[koi] == NULL)
+            {
+            _constRefOwningClasses[koi] = permanentObjOwningClass;
+            }
+         }
+      }
+
+   if (trace)
+      {
+      // Show the attributed owning classes in order of known object index.
+      log->prints("\nconst ref owning classes:\n");
+      for (TR::KnownObjectTable::Index i = 0; i < knotEnd; i++)
+         {
+         if (self()->getConstRefLabel(i) != NULL)
+            {
+            TR_OpaqueClassBlock *c = _constRefOwningClasses[i];
+            int32_t len;
+            const char *name = TR::Compiler->cls.classNameChars(comp(), c, len);
+            log->printf("  obj%-4d  %p %.*s\n", i, c, len, name);
+            }
+         }
+
+      log->println();
+      }
+
+   // Now that owning classes are assigned, sort the const refs by owning class.
+   // The important thing is really just grouping by owning class, which ensures
+   // that we'll create no more than one const ref array per class.
+   struct OwningClassCmp
+      {
+      const TR::vector<TR_OpaqueClassBlock*, TR::Region&> &_owningClasses;
+
+      OwningClassCmp(const TR::vector<TR_OpaqueClassBlock*, TR::Region&> &owningClasses)
+         : _owningClasses(owningClasses)
+         {
+         // empty
+         }
+
+      bool operator()(TR::KnownObjectTable::Index i, TR::KnownObjectTable::Index j) const
+         {
+         // Use known object index as a tiebreaker, just because it will read
+         // better in log output.
+         std::less<TR_OpaqueClassBlock*> lt;
+         TR_OpaqueClassBlock *classI = _owningClasses[i];
+         TR_OpaqueClassBlock *classJ = _owningClasses[j];
+         return classI == classJ ? i < j : lt(classI, classJ);
+         }
+      };
+
+   OwningClassCmp cmp(_constRefOwningClasses);
+   std::sort(_constRefSortOrder.begin(), _constRefSortOrder.end(), cmp);
+
+   if (trace)
+      {
+      log->prints("const ref sort order (with owning class):\n");
+      for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+         {
+         TR::KnownObjectTable::Index koi = *it;
+         TR_OpaqueClassBlock *c = _constRefOwningClasses[koi];
+         int32_t len;
+         const char *name = TR::Compiler->cls.classNameChars(comp(), c, len);
+         log->printf("  obj%-4d  %p %.*s\n", koi, c, len, name);
+         }
+
+      log->println();
+      }
+   }
+
+void
+J9::CodeGenerator::initConstRefs(J9JITExceptionTable *metaData)
+   {
+   TR_ASSERT_FATAL(
+      metaData->constRefArrays == NULL,
+      "unexpected const ref array %p for J9JITExceptionTable %p",
+      metaData->constRefArrays,
+      metaData);
+
+   if (!hasConstRefs())
+      {
+      return;
+      }
+
+   bool trace = comp()->getOption(TR_TraceOptDetails) || comp()->getOption(TR_TraceCG);
+
+   TR_ASSERT_FATAL(
+      comp()->useConstRefs(),
+      "const refs must be enabled to exist");
+
+   TR::KnownObjectTable *knot = comp()->getKnownObjectTable();
+   J9VMThread *vmThread = comp()->j9VMThread();
+   J9JavaVM *vm = vmThread->javaVM;
+
+   // Zero-initialize the slots and find where they start so that the GC can be
+   // told where they are.
+   //
+   // Really, the slots should already have been zeroed during binary encoding,
+   // but it doesn't hurt to zero them again.
+   //
+   // NOTE: Don't fully initialize them yet, since that requires a write
+   // barrier, and it's probably good to delay that until the GC is aware of
+   // the slots.
+
+   omrthread_jit_write_protect_disable();
+   for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+      {
+      TR::KnownObjectTable::Index koi = *it;
+      TR::LabelSymbol *label = getConstRefLabel(koi);
+      j9object_t *slot = (j9object_t*)label->getCodeLocation();
+      *slot = NULL;
+      }
+
+   omrthread_jit_write_protect_enable();
+
+   auto firstSlot =
+      (j9object_t *)getConstRefLabel(_constRefSortOrder[0])->getCodeLocation();
+
+   // Inform the GC of these slots.
+
+   omrthread_monitor_enter(vm->constRefsMutex);
+
+   // We must not throw while the mutex is held, so in particular we can't
+   // failCompilation(). Instead set ok to false on failure, and conditionally
+   // fail the compilation after releasing the lock.
+   bool ok = true;
+
+   J9ConstRefArray *firstNode = NULL;
+   J9ConstRefArray *lastNode = NULL;
+   size_t totalSlotsCount = _constRefSortOrder.size();
+   size_t start = 0;
+   while (start < totalSlotsCount)
+      {
+      TR_OpaqueClassBlock *owningClass =
+         _constRefOwningClasses[_constRefSortOrder[start]];
+
+      size_t end = start + 1;
+      for (; end < totalSlotsCount; end++)
+         {
+         TR::KnownObjectTable::Index koi = _constRefSortOrder[end];
+         if (_constRefOwningClasses[koi] != owningClass)
+            {
+            break;
+            }
+         }
+
+      // Create a J9ConstRefArray for the slots at indices [start, end), which
+      // all have the same owning class.
+      //
+      // NOTE: The GC could be scanning the const refs belonging to owningClass
+      // right now as part of a concurrent GC phase. It doesn't lock the mutex
+      // in order to do so.
+      //
+      // While we hold the mutex to serialize w.r.t. other compilation threads
+      // creating const refs and maintain invariants, updates still need to be
+      // done atomically from the POV of the GC. Thankfully, GC scanning treats
+      // the list as though it's singly linked, ignoring the other pointers.
+      // And since there are no other concurrent modifications, this addition
+      // only has to be atomic w.r.t. a reader, so in particular there is no
+      // need to use atomic CAS.
+      //
+      J9Class *owningJ9C =
+         TR::Compiler->cls.convertClassOffsetToClassPtr(owningClass);
+
+      J9ConstRefArray *sentinel = owningJ9C->constRefArrays;
+      if (sentinel == NULL)
+         {
+         sentinel = (J9ConstRefArray*)pool_newElement(vm->constRefArrayPool);
+         if (sentinel == NULL)
+            {
+            ok = false;
+            break;
+            }
+
+         sentinel->count = 0;
+         sentinel->references = NULL;
+         sentinel->jitBodyMetaData = NULL;
+         sentinel->prevInClass = sentinel;
+         sentinel->nextInClass = sentinel;
+         sentinel->nextInJITBody = sentinel;
+
+         // Ensure that all of the field initialization stores are visible to
+         // other threads before publishing sentinel.
+         VM_AtomicSupport::writeBarrier();
+
+         owningJ9C->constRefArrays = sentinel;
+         }
+
+      J9ConstRefArray *node = (J9ConstRefArray*)pool_newElement(vm->constRefArrayPool);
+      if (node == NULL)
+         {
+         ok = false;
+         break;
+         }
+
+      node->count = end - start;
+      node->references = firstSlot + start;
+      node->jitBodyMetaData = metaData;
+
+      // Insert node at the beginning of the list.
+      J9ConstRefArray *prev = sentinel;
+      J9ConstRefArray *next = sentinel->nextInClass;
+      node->prevInClass = prev;
+      node->nextInClass = next;
+
+      // Ensure that all of the field initialization stores and the zero-init
+      // slot stores are visible to other threads before publishing node.
+      VM_AtomicSupport::writeBarrier();
+
+      // node will be visible to concurrent GC scanning if and only if it
+      // sees this update to prev->nextInClass.
+      prev->nextInClass = node;
+      next->prevInClass = node;
+
+      // Add this node to the list of const ref arrays for this body. Later, if
+      // any of them are destroyed, then the body will be defunct, so all of
+      // the others can and will be destroyed as well.
+      node->nextInJITBody = lastNode;
+
+      if (firstNode == NULL)
+         {
+         firstNode = node;
+         }
+
+      lastNode = node;
+      firstNode->nextInJITBody = node;
+
+      // Move past the contiguous range [start, end) for this owning class.
+      start = end;
+      }
+
+   // In case of code cache reclamation (later), destroy all nodes that were
+   // sucessfully created for this body. firstNode is enough because the others
+   // can be found via nextInJITBody. This is also used for cleanup in case of
+   // compilation failure.
+   metaData->constRefArrays = firstNode;
+
+   omrthread_monitor_exit(vm->constRefsMutex);
+
+   if (!ok)
+      {
+      // Don't clean up const ref arrays that were successfully created here.
+      // That's already handled as part of compilation failure.
+      comp()->failCompilation<TR::CompilationException>("failed to create const refs");
+      }
+
+   // Now finally initialize the slots for real.
+   TR::VMAccessCriticalSection initConstRefSlotsCR(comp()->fej9());
+   omrthread_jit_write_protect_disable();
+   for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+      {
+      TR::KnownObjectTable::Index koi = *it;
+
+      TR_OpaqueClassBlock *owningClass = _constRefOwningClasses[koi];
+      J9Class *owningJ9C =
+         TR::Compiler->cls.convertClassOffsetToClassPtr(owningClass);
+
+      TR::LabelSymbol *label = getConstRefLabel(koi);
+      j9object_t *slot = (j9object_t*)label->getCodeLocation();
+      j9object_t obj = (j9object_t)knot->getPointer(koi);
+      bool isVolatile = false;
+      vm->memoryManagerFunctions->j9gc_objaccess_staticStoreObject(
+         vmThread, owningJ9C, slot, obj, isVolatile);
+      }
+
+   omrthread_jit_write_protect_enable();
+   }
+
+#endif // defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE) && defined(J9VM_OPT_JITSERVER)
+
+void
+J9::CodeGenerator::getConstRefInfoOnServer(std::vector<ConstRefInfo> &out)
+   {
+   TR_ASSERT_FATAL(comp()->isOutOfProcessCompilation(), "server only");
+
+   uint8_t *startPC = self()->getCodeStart();
+
+   out.clear();
+   out.reserve(_constRefSortOrder.size());
+
+   for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+      {
+      TR::KnownObjectTable::Index koi = *it;
+      ConstRefInfo info = {};
+      info._koi = koi;
+      info._owningClass = _constRefOwningClasses[koi];
+      info._labelOffset = getConstRefLabel(koi)->getCodeLocation() - startPC;
+      out.push_back(info);
+      }
+   }
+
+void
+J9::CodeGenerator::setConstRefInfoOnClient(
+   const std::vector<ConstRefInfo> &info, uint8_t *startPC)
+   {
+   TR_ASSERT_FATAL(comp()->isRemoteCompilation(), "client only");
+
+   TR::KnownObjectTable *knot = comp()->getKnownObjectTable();
+   if (knot == NULL)
+      {
+      TR_ASSERT_FATAL(info.empty(), "nonempty const ref info but no known object table");
+      return;
+      }
+
+   TR_ASSERT_FATAL(_constRefOwningClasses.empty(), "_constRefOwningClasses should be empty");
+
+   // The client may have already created const ref labels for the purpose of
+   // assignKeepaliveConstRefLabels(), which looks at them. Make sure that all
+   // known objects for which const ref labels have already been created are
+   // also listed in info.
+   std::vector<bool> isConstRefInInfo(knot->getEndIndex(), false);
+   for (auto it = info.begin(); it != info.end(); it++)
+      {
+      isConstRefInInfo[it->_koi] = true;
+      }
+
+   for (auto it = _constRefSortOrder.begin(); it != _constRefSortOrder.end(); it++)
+      {
+      TR::KnownObjectTable::Index koi = *it;
+      TR_ASSERT_FATAL(
+         isConstRefInInfo[koi],
+         "have const ref for obj%d on client but not on server\n",
+         koi);
+      }
+
+   // Copy the owning classes and label addresses.
+   _constRefOwningClasses.reserve(knot->getEndIndex());
+   _constRefOwningClasses.resize(knot->getEndIndex(), NULL);
+
+   for (auto it = info.begin(); it != info.end(); it++)
+      {
+      _constRefOwningClasses[it->_koi] = it->_owningClass;
+
+      // Don't use assignNewConstRefLabel(). Some might already exist.
+      uint8_t *labelAddr = startPC + it->_labelOffset;
+      self()->assignConstRefLabel(it->_koi)->setCodeLocation(labelAddr);
+      }
+
+   // At this point _constRefSortOrder contains the known object indices for
+   // all const refs in info, but probably in the wrong order. Ignore the
+   // current contents and replace it with the order from info.
+   _constRefSortOrder.clear();
+   _constRefSortOrder.reserve(info.size());
+   for (auto it = info.begin(); it != info.end(); it++)
+      {
+      _constRefSortOrder.push_back(it->_koi);
+      }
+   }
+
+#endif // defined(J9VM_OPT_OPENJDK_METHODHANDLE) && defined(J9VM_OPT_JITSERVER)

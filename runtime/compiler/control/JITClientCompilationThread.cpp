@@ -3041,6 +3041,160 @@ handleResponse(JITServer::MessageType response, JITServer::ClientStream *client,
          client->write(response, ramClasses);
          }
          break;
+      case MessageType::CodeGenerator_assignKeepaliveConstRefLabels:
+         {
+#if !defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+         TR_ASSERT_FATAL(
+            false,
+            "CodeGenerator_assignKeepaliveConstRefLabels is for "
+            "OpenJDK MethodHandles only");
+#else
+         auto recv = client->getRecvData<
+            std::vector<TR::KnownObjectTable::Index>,
+            std::vector<TR_OpaqueClassBlock*>,
+            std::vector<J9::ResolvedInlinedCallSite>,
+            std::vector<J9::RepeatRetainedMethodsAnalysis::InlinedSiteInfo>,
+            std::vector<TR_ResolvedMethod*>,
+            std::vector<TR_ResolvedMethod*>
+         >();
+
+         auto &constRefKois = std::get<0>(recv);
+         auto &keepaliveClasses = std::get<1>(recv);
+         auto &inliningTable = std::get<2>(recv);
+         auto &inlinedSiteInfo = std::get<3>(recv);
+         auto &keepaliveMethods = std::get<4>(recv);
+         auto &bondMethods = std::get<5>(recv);
+
+         TR::KnownObjectTable *knot = comp->getKnownObjectTable();
+         TR::KnownObjectTable::Index oldEnd = knot->getEndIndex();
+
+         std::vector<bool> isInConstRefKois(oldEnd, false); // needed below
+         for (auto it = constRefKois.begin(); it != constRefKois.end(); it++)
+            {
+            TR::KnownObjectTable::Index koi = *it;
+            comp->cg()->assignConstRefLabel(koi);
+            isInConstRefKois[koi] = true;
+            }
+
+         for (auto it = keepaliveClasses.begin(); it != keepaliveClasses.end(); it++)
+            {
+            comp->addKeepaliveClass(*it);
+            }
+
+         // The inlining table needs to be a TR::vector allocated in the heap
+         // memory region.
+         auto trInliningTable = new (comp->region())
+            TR::vector<J9::ResolvedInlinedCallSite, TR::Region&>(comp->region());
+
+         trInliningTable->reserve(inliningTable.size());
+         for (auto it = inliningTable.begin(); it != inliningTable.end(); it++)
+            {
+            trInliningTable->push_back(*it);
+            }
+
+         J9::RepeatRetainedMethodsAnalysis::analyzeOnClient(
+            comp, *trInliningTable, inlinedSiteInfo, keepaliveMethods, bondMethods);
+
+         comp->cg()->assignKeepaliveConstRefLabels();
+
+         // Send any newly created known objects back to the server so that it
+         // knows to create labels for them, but also to keep the known object
+         // tables in sync.
+         TR::KnownObjectTable::Index newEnd = knot->getEndIndex();
+         std::vector<std::tuple<TR::KnownObjectTable::Index, uintptr_t*>> newKnownObjects;
+         newKnownObjects.reserve(newEnd - oldEnd);
+         for (TR::KnownObjectTable::Index koi = oldEnd; koi < newEnd; koi++)
+            {
+            uintptr_t *loc = knot->getPointerLocation(koi);
+            newKnownObjects.push_back(std::make_tuple(koi, loc));
+            }
+
+         // There might be keepalives where the Class object was already in the
+         // known object table (but just not already treated as a const ref).
+         // The server also needs to know about any of those, since otherwise it
+         // would neglect to add labels for them.
+         std::vector<TR::KnownObjectTable::Index> oldKnobKeepalives;
+         oldKnobKeepalives.reserve(oldEnd - constRefKois.size()); // upper bound
+         for (TR::KnownObjectTable::Index koi = 1; koi < oldEnd; koi++)
+            {
+            if (comp->cg()->getConstRefLabel(koi) != NULL && !isInConstRefKois[koi])
+               {
+               oldKnobKeepalives.push_back(koi);
+               }
+            }
+
+         // Also send the const provenance graph edges. This avoids a separate
+         // round trip that would otherwise be required for the server to get
+         // them. NOTE: It's important for getRawEdgesOnClient() to be called
+         // *after* J9::RepeatRetainedMethodsAnalysis::analyzeOnClient(), since
+         // the latter adds provenance edges via J9::RetainedMethodSet::scan().
+         // Similarly, it has to be called after assignKeepaliveConstRefLabels(),
+         // since that adds provenance edges as well.
+         std::vector<J9::ConstProvenanceGraph::RawEdge> provenanceEdges;
+         comp->constProvenanceGraph()->getRawEdgesOnClient(provenanceEdges);
+
+         // Also send the final choice of bond methods.
+         std::vector<TR_ClientBondMethod> clientBondMethods;
+         TR_ResolvedJ9JITServerMethod::getClientBondMethodsToSendToServer(
+            comp, clientBondMethods);
+
+         client->write(
+            response,
+            newKnownObjects,
+            oldKnobKeepalives,
+            provenanceEdges,
+            clientBondMethods);
+#endif
+         }
+         break;
+      case MessageType::CodeGenerator_getConstProvenanceEdges:
+         {
+#if !defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+         TR_ASSERT_FATAL(
+            false,
+            "CodeGenerator_getConstProvenanceEdges is for "
+            "OpenJDK MethodHandles only");
+#else
+         auto recv = client->getRecvData<
+            std::vector<J9::ResolvedInlinedCallSite>,
+            std::vector<J9::RepeatRetainedMethodsAnalysis::InlinedSiteInfo>,
+            std::vector<TR_ResolvedMethod*>,
+            std::vector<TR_ResolvedMethod*>
+         >();
+
+         auto &inliningTable = std::get<0>(recv);
+         auto &inlinedSiteInfo = std::get<1>(recv);
+         auto &keepaliveMethods = std::get<2>(recv);
+         auto &bondMethods = std::get<3>(recv);
+
+         // The inlining table needs to be a TR::vector allocated in the heap
+         // memory region.
+         auto trInliningTable = new (comp->region())
+            TR::vector<J9::ResolvedInlinedCallSite, TR::Region&>(comp->region());
+
+         trInliningTable->reserve(inliningTable.size());
+         for (auto it = inliningTable.begin(); it != inliningTable.end(); it++)
+            {
+            trInliningTable->push_back(*it);
+            }
+
+         J9::RepeatRetainedMethodsAnalysis::analyzeOnClient(
+            comp, *trInliningTable, inlinedSiteInfo, keepaliveMethods, bondMethods);
+
+         // It's important for this to happen after analyzeOnClient() because
+         // that adds provenance edges via J9::RetainedMethodSet::scan().
+         std::vector<J9::ConstProvenanceGraph::RawEdge> edges;
+         comp->constProvenanceGraph()->getRawEdgesOnClient(edges);
+
+         // Also send the final choice of bond methods.
+         std::vector<TR_ClientBondMethod> clientBondMethods;
+         TR_ResolvedJ9JITServerMethod::getClientBondMethodsToSendToServer(
+            comp, clientBondMethods);
+
+         client->write(response, edges, clientBondMethods);
+#endif
+         }
+         break;
       default:
          // It is vital that this remains a hard error during dev!
          TR_ASSERT(false, "JITServer: handleServerMessage received an unknown message type: %d\n", response);
@@ -3577,6 +3731,11 @@ remoteCompile(J9VMThread *vmThread, TR::Compilation *compiler, TR_ResolvedMethod
    TR_OptimizationPlan modifiedOptPlan;
    std::vector<SerializedRuntimeAssumption> serializedRuntimeAssumptions;
    std::vector<TR_OpaqueMethodBlock *> methodsRequiringTrampolines;
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   std::vector<TR::CodeGenerator::ConstRefInfo> constRefInfo;
+#endif
+
    uint32_t methodIndex = (uint32_t)(method - clazz->ramMethods);// Index in the array of methods of the defining class
    try
       {
@@ -3615,6 +3774,9 @@ remoteCompile(J9VMThread *vmThread, TR::Compilation *compiler, TR_ResolvedMethod
             std::string, std::string, CHTableCommitData, std::vector<TR_OpaqueClassBlock*>, std::string,
             std::vector<TR_ResolvedJ9Method*>, TR_OptimizationPlan, std::vector<SerializedRuntimeAssumption>,
             JITServer::ServerMemoryState, JITServer::ServerActiveThreadsState, std::vector<TR_OpaqueMethodBlock *>
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+            , std::vector<TR::CodeGenerator::ConstRefInfo>
+#endif
          >();
          statusCode = compilationOK;
          codeCacheStr = std::get<0>(recv);
@@ -3628,6 +3790,10 @@ remoteCompile(J9VMThread *vmThread, TR::Compilation *compiler, TR_ResolvedMethod
          JITServer::ServerMemoryState nextMemoryState = std::get<8>(recv);
          JITServer::ServerActiveThreadsState nextActiveThreadState = std::get<9>(recv);
          methodsRequiringTrampolines = std::get<10>(recv);
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+         constRefInfo = std::get<11>(recv);
+#endif
 
          updateCompThreadActivationPolicy(compInfoPT, nextMemoryState, nextActiveThreadState);
 
@@ -4002,6 +4168,11 @@ remoteCompile(J9VMThread *vmThread, TR::Compilation *compiler, TR_ResolvedMethod
 
          if (!useAotCompilation && (compiler->isDeserializedAOTMethodStore() || !compiler->isDeserializedAOTMethod()))
             {
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+            uint8_t *startPC = (uint8_t*)metaData->startPC;
+            compiler->cg()->setConstRefInfoOnClient(constRefInfo, startPC);
+#endif
+
             TR::ClassTableCriticalSection commit(compiler->fe());
 
             // Intersect classesThatShouldNotBeNewlyExtended with newlyExtendedClasses

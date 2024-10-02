@@ -30,6 +30,9 @@ J9::ConstProvenanceGraph::ConstProvenanceGraph(TR::Compilation *comp)
    , _edges(comp->region())
    , _emptyReferents(comp->region())
    , _seenArgPairs(comp->region())
+#if defined(J9VM_OPT_JITSERVER)
+   , _hasServerAddedRawEdgesFromClient(false)
+#endif
    {
    // empty
    }
@@ -319,6 +322,108 @@ J9::ConstProvenanceGraph::trace(KnownObject koi)
    _comp->log()->printf("obj%d", koi._i);
    }
 
+void
+J9::ConstProvenanceGraph::dumpDot(OMR::Logger *log)
+   {
+   log->prints("// const provenance graph in dot (graphviz) format\n");
+   log->prints("// \"perm\"   permanent root\n");
+   log->prints("// \"obj...\" known object\n");
+   log->prints("// \"L:...\" loader\n");
+   log->prints("// \"C:...\" anonymous class\n");
+   log->prints("digraph CPG {\n");
+
+   TR::Region &stackRegion = _comp->trMemory()->currentStackRegion();
+   TR::set<Place> allPlaces(stackRegion);
+   for (auto it = _edges.begin(), end = _edges.end(); it != end; it++)
+      {
+      allPlaces.insert(it->first);
+      const TR::set<Place> &refs = it->second;
+      for (auto rIt = refs.begin(), rEnd = refs.end(); rIt != rEnd; rIt++)
+         {
+         allPlaces.insert(*rIt);
+         }
+      }
+
+   for (auto it = allPlaces.begin(), end = allPlaces.end(); it != end; it++)
+      {
+      Place p = *it;
+      if (p.kind() == PlaceKind_ClassLoader || p.kind() == PlaceKind_AnonymousClass)
+         {
+         log->prints("    ");
+         printDotPlaceName(log, p);
+         log->prints(" [label=\"");
+         printDotPlaceName(log, p, true);
+         log->prints("\"];\n");
+         }
+      }
+
+   for (auto it = allPlaces.begin(), end = allPlaces.end(); it != end; it++)
+      {
+      Place p = *it;
+      const TR::set<Place> &refs = referents(p);
+      if (refs.empty())
+         {
+         continue;
+         }
+
+      log->prints("    ");
+      printDotPlaceName(log, p);
+      log->prints(" -> ");
+
+      if (refs.size() == 1)
+         {
+         printDotPlaceName(log, *refs.begin());
+         }
+      else
+         {
+         log->printc('{');
+         auto rIt = refs.begin();
+         printDotPlaceName(log, *rIt++);
+         for (auto rEnd = refs.end(); rIt != rEnd; rIt++)
+            {
+            log->printc(' ');
+            printDotPlaceName(log, *rIt);
+            }
+
+         log->printc('}');
+         }
+
+      log->prints(";\n");
+      }
+
+   log->prints("}\n\n");
+   }
+
+void
+J9::ConstProvenanceGraph::printDotPlaceName(OMR::Logger *log, Place p, bool label)
+   {
+   // The formatting used in tracing is a bit verbose for graph labels, and it
+   // doesn't work at all for node IDs.
+   //
+   // Names including addresses in hex separate the one-character prefix from
+   // the address with a colon in the label, but that's not allowed in IDs.
+   //
+   const char *colon = label ? ":" : "";
+   switch (p.kind())
+      {
+      case PlaceKind_PermanentRoot:
+         log->prints("perm");
+         break;
+
+      case PlaceKind_ClassLoader:
+         log->printf("L%s%zX", colon, (uintptr_t)p.getClassLoader());
+         break;
+
+      case PlaceKind_AnonymousClass:
+         log->printf("C%s%zX", colon, (uintptr_t)p.getAnonymousClass());
+         break;
+
+      case PlaceKind_KnownObject:
+         log->printf("obj%d", p.getKnownObject());
+         break;
+      }
+   }
+
 bool
 J9::ConstProvenanceGraph::isPermanentLoader(J9ClassLoader *loader)
    {
@@ -423,3 +528,61 @@ J9::ConstProvenanceGraph::assertValidPlace(Place p)
          break;
       }
    }
+
+#if defined(J9VM_OPT_JITSERVER)
+void
+J9::ConstProvenanceGraph::getRawEdgesOnClient(std::vector<RawEdge> &edges)
+   {
+   TR_ASSERT_FATAL(_comp->isRemoteCompilation(), "client only");
+
+   edges.clear();
+
+   for (auto entry = _edges.begin(); entry != _edges.end(); entry++)
+      {
+      RawPlace origin = entry->first.to_raw();
+
+      const auto &referents = entry->second;
+      for (auto it = referents.begin(); it != referents.end(); it++)
+         {
+         RawEdge edge = {};
+         edge.origin = origin;
+         edge.referent = it->to_raw();
+         edges.push_back(edge);
+         }
+      }
+   }
+
+void
+J9::ConstProvenanceGraph::addRawEdgesOnServer(const std::vector<RawEdge> &edges)
+   {
+   TR_ASSERT_FATAL(_comp->isOutOfProcessCompilation(), "server only");
+
+   if (!isConstProvenanceEnabled())
+      {
+      return;
+      }
+
+   _hasServerAddedRawEdgesFromClient = true;
+
+   for (auto it = edges.begin(); it != edges.end(); it++)
+      {
+      Place origin = Place::from_raw(it->origin);
+      Place referent = Place::from_raw(it->referent);
+      if (trace())
+         {
+         trace("Const provenance: add edge from client: ");
+         trace(origin);
+         trace(" -> ");
+         trace(referent);
+         trace("\n");
+         }
+
+      addEdgeImpl(origin, referent);
+      }
+
+   if (!edges.empty())
+      {
+      logprintln(trace(), _comp->log());
+      }
+   }
+#endif

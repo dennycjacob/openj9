@@ -870,10 +870,12 @@ TR_VectorAPIExpansion::getOpaqueClassBlockFromClassNode(TR::Compilation *comp, T
       {
       knownObjectIndex = symRef->getKnownObjectIndex();
       }
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
    else if (classNode->hasKnownObjectIndex())
       {
       knownObjectIndex = classNode->getKnownObjectIndex();
       }
+#endif
 
    TR_OpaqueClassBlock *clazz = NULL;
 

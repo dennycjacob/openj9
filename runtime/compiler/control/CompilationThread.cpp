@@ -85,6 +85,7 @@
 #include "runtime/asmprotos.h"
 #include "runtime/CodeCache.hpp"
 #include "runtime/CodeCacheManager.hpp"
+#include "runtime/HookHelpers.hpp"
 #include "runtime/J9VMAccess.hpp"
 #include "runtime/RelocationRuntime.hpp"
 #include "runtime/J9Profiler.hpp"
@@ -1223,6 +1224,7 @@ TR::CompilationInfo::CompilationInfo(J9JITConfig *jitConfig) :
    // the options have been processed
 
    _vmStateOfCrashedThread = 0;
+   _crashWasDueToOrphanedConstRefs = false;
 
    _cachedFreePhysicalMemoryB = 0;
    _cachedIncompleteFreePhysicalMemory = false;
@@ -8091,8 +8093,23 @@ TR::CompilationInfoPerThreadBase::postCompilationTasks(J9VMThread * vmThread,
       {
       // The KOT needs to survive at least until we're done committing virtual guards and we must not be holding the
       // comp monitor prior to freeing the KOT because it requires VM access.
-      if (_compiler->getKnownObjectTable())
+      bool freeKnotNow = true;
+
+      // However, if this is an out-of-process compilation on the server, and
+      // if there are const refs, the known object table will still be needed
+      // in compilationEnd() below, since it will be necessary to send the
+      // client the addresses of the const ref labels.
+#if defined(J9VM_OPT_JITSERVER) && defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+      if (_compiler->isOutOfProcessCompilation() && _compiler->cg()->hasConstRefs())
+         {
+         freeKnotNow = false;
+         }
+#endif
+
+      if (freeKnotNow && _compiler->getKnownObjectTable() != NULL)
+         {
          _compiler->freeKnownObjectTable();
+         }
       }
 
 #if defined(J9VM_OPT_JITSERVER)
@@ -8232,6 +8249,21 @@ TR::CompilationInfoPerThreadBase::postCompilationTasks(J9VMThread * vmThread,
       if (entry->_compErrCode == compilationOK && _vm->isAOT_DEPRECATED_DO_NOT_USE())
          _compInfo._statNumAotedMethods++;
       }
+
+#if defined(J9VM_OPT_JITSERVER) && defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   // The known object table may not have been freed above.
+   if (_compiler != NULL && _compiler->getKnownObjectTable() != NULL)
+      {
+      // It's OK to free the known object table here even though it requires VM
+      // access because this will only happen on the server, and on the server
+      // we skipped acquiring the compilation monitor.
+      TR_ASSERT_FATAL(
+         _compiler->isOutOfProcessCompilation(),
+         "known object table should only still exist on the server");
+
+      _compiler->freeKnownObjectTable();
+      }
+#endif
 
    // compilation success can be detected by checking startPC && startPC != _oldStartPC
 
@@ -9244,8 +9276,16 @@ TR::CompilationInfoPerThreadBase::wrappedCompile(J9PortLibrary *portLib, void * 
             UDATA vmState = that->_compInfo.getVMStateOfCrashedThread();
             if ((vmState & J9VMSTATE_JIT_CODEGEN) == J9VMSTATE_JIT_CODEGEN)
                {
-               options->setOption(TR_TraceCG);
-               options->setOption(TR_TraceRA);
+               if (that->_compInfo.crashWasDueToOrphanedConstRefs())
+                  {
+                  options->setOption(TR_TraceRetainedMethods);
+                  options->setOption(TR_TraceConstProvenance);
+                  }
+               else
+                  {
+                  // NOTE: TR_TraceCG is already enabled as part of TR_TraceAll.
+                  options->setOption(TR_TraceRA);
+                  }
                }
             else if ((vmState & J9VMSTATE_JIT_OPTIMIZER) == J9VMSTATE_JIT_OPTIMIZER)
                {
@@ -10257,6 +10297,22 @@ TR::CompilationInfoPerThreadBase::compile(
             }
          }
 
+      // Initialize the constant references and inform the GC of them. This can
+      // fail the compilation, but only due to native OOM. The body had better
+      // never run if metaData is null. Skip this if we're doing an AOT load,
+      // since in that case cg() will be null, but there won't be any const refs
+      // anyway because AOT compilation doesn't support the known object table.
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+      if (metaData != NULL && !_methodBeingCompiled->isAotLoad()
+#if defined(J9VM_OPT_JITSERVER)
+          && !compiler->isOutOfProcessCompilation() // this happens on the client
+#endif
+          )
+         {
+         compiler->cg()->initConstRefs(metaData);
+         }
+#endif
+
       // As the body is finished, mark its profile info as active so that the JProfiler thread will inspect it
       if (compiler->getRecompilationInfo())
          {
@@ -10284,7 +10340,14 @@ TR::CompilationInfoPerThreadBase::compile(
 #endif
 
       printCompFailureInfo(compiler, exceptionName);
-      processException(vmThread, scratchSegmentProvider, compiler, haveLockedClassUnloadMonitor, exceptionName);
+      processException(
+         vmThread,
+         scratchSegmentProvider,
+         compiler,
+         haveLockedClassUnloadMonitor,
+         exceptionName,
+         metaData);
+
       metaData = 0;
       }
 
@@ -11380,7 +11443,8 @@ TR::CompilationInfoPerThreadBase::processException(
    TR::SegmentAllocator const &scratchSegmentProvider,
    TR::Compilation * compiler,
    volatile bool & haveLockedClassUnloadMonitor,
-   const char *exceptionName
+   const char *exceptionName,
+   J9JITExceptionTable *metaData
    ) throw()
    {
    if (TR::Options::getVerboseOption(TR_VerboseCompilationDispatch))
@@ -11418,6 +11482,18 @@ TR::CompilationInfoPerThreadBase::processException(
       if (!(vmThread->publicFlags &  J9_PUBLIC_FLAGS_VM_ACCESS))
          acquireVMAccessNoSuspend(vmThread);
       }
+
+#if defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   if (metaData != NULL && metaData->constRefArrays != NULL)
+      {
+      // constRefsMutex isn't sufficient to allow us to remove these const refs.
+      // The GC could be scanning them concurrently, so take exclusive VM access.
+      auto *vmFuncs = vmThread->javaVM->internalVMFunctions;
+      vmFuncs->acquireExclusiveVMAccess(vmThread);
+      jitRemoveConstRefsFromBody(vmThread, metaData);
+      vmFuncs->releaseExclusiveVMAccess(vmThread);
+      }
+#endif
 
    if (TR::Options::getVerboseOption(TR_VerboseCompYieldStats))
       {

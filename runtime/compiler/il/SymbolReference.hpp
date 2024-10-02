@@ -75,7 +75,7 @@ public:
                    mcount_t owningMethodIndex,
                    int32_t cpIndex,
                    int32_t unresolvedIndex = 0,
-                   TR::KnownObjectTable::Index knownObjectIndex = TR::KnownObjectTable::UNKNOWN) :
+                   KnownTempIndex knownObjectIndex = KnownTempIndex(TR::KnownObjectTable::UNKNOWN)) :
       J9::SymbolReferenceConnector(symRefTab,
                                         sym,
                                         owningMethodIndex,
@@ -85,12 +85,18 @@ public:
 
    SymbolReference(TR::SymbolReferenceTable *symRefTab,
                    TR::SymbolReference& sr,
-                   intptr_t offset,
-                   TR::KnownObjectTable::Index knownObjectIndex = TR::KnownObjectTable::UNKNOWN) :
+                   intptr_t offset
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+                   , TR::KnownObjectTable::Index knownObjectIndex = TR::KnownObjectTable::UNKNOWN
+#endif
+                   ) :
       J9::SymbolReferenceConnector(symRefTab,
                                         sr,
-                                        offset,
-                                        knownObjectIndex) {}
+                                        offset
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+                                        , knownObjectIndex
+#endif
+                                        ) {}
 
 protected:
 

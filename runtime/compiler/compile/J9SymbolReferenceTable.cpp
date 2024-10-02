@@ -529,11 +529,21 @@ J9::SymbolReferenceTable::findOrCreateCallSiteTableEntrySymbol(TR::ResolvedMetho
 
          J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
          cpg->addEdge(owningMethod, cpg->knownObject(knownObjectIndex));
+
+         if (comp()->useConstRefs())
+            {
+            return knot->constSymRef(knownObjectIndex);
+            }
          }
       }
 
-   symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), -1,
-                                                    (isUnresolved ? _numUnresolvedSymbols++ : 0), knownObjectIndex);
+   symRef = new (trHeapMemory()) TR::SymbolReference(
+      self(), sym, owningMethodSymbol->getResolvedMethodIndex(), -1,
+      (isUnresolved ? _numUnresolvedSymbols++ : 0)
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+      , knownObjectIndex
+#endif
+      );
 
    if (isUnresolved)
       {
@@ -579,11 +589,21 @@ J9::SymbolReferenceTable::findOrCreateMethodTypeTableEntrySymbol(TR::ResolvedMet
 
          J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
          cpg->addEdge(owningMethod, cpg->knownObject(knownObjectIndex));
+
+         if (comp()->useConstRefs())
+            {
+            return knot->constSymRef(knownObjectIndex);
+            }
          }
       }
 
-   symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), -1,
-                                                    (isUnresolved ? _numUnresolvedSymbols++ : 0), knownObjectIndex);
+   symRef = new (trHeapMemory()) TR::SymbolReference(
+      self(), sym, owningMethodSymbol->getResolvedMethodIndex(), -1,
+      (isUnresolved ? _numUnresolvedSymbols++ : 0)
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+      , knownObjectIndex
+#endif
+      );
 
    if (isUnresolved)
       {
@@ -1539,9 +1559,20 @@ J9::SymbolReferenceTable::findOrCreateStringSymbol(TR::ResolvedMethodSymbol * ow
 
             J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
             cpg->addEdge(owningMethod, cpg->knownObject(knownObjectIndex));
+
+            if (comp()->useConstRefs())
+               {
+               return knot->constSymRef(knownObjectIndex);
+               }
             }
          }
-      symRef = findOrCreateCPSymbol(owningMethodSymbol, cpIndex, TR::Address, true, stringConst, knownObjectIndex);
+
+      symRef = findOrCreateCPSymbol(
+         owningMethodSymbol, cpIndex, TR::Address, true, stringConst
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+         , knownObjectIndex
+#endif
+         );
       }
 
    TR::StaticSymbol * sym = (TR::StaticSymbol *)symRef->getSymbol();
@@ -1595,6 +1626,11 @@ J9::SymbolReferenceTable::findOrCreateConstantDynamicSymbol(TR::ResolvedMethodSy
 
          J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
          cpg->addEdge(owningMethod, cpg->knownObject(knownObjectIndex));
+
+         if (comp()->useConstRefs())
+            {
+            return knot->constSymRef(knownObjectIndex);
+            }
          }
 
       symRef = findOrCreateCPSymbol(
@@ -1602,8 +1638,11 @@ J9::SymbolReferenceTable::findOrCreateConstantDynamicSymbol(TR::ResolvedMethodSy
          cpIndex,
          TR::Address,
          true,
-         dynamicConst,
-         knownObjectIndex);
+         dynamicConst
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+         , knownObjectIndex
+#endif
+         );
       }
 
    TR::StaticSymbol * sym = (TR::StaticSymbol *)symRef->getSymbol();
@@ -1662,6 +1701,11 @@ J9::SymbolReferenceTable::findOrCreateMethodTypeSymbol(TR::ResolvedMethodSymbol 
 
          J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
          cpg->addEdge(owningMethod, cpg->knownObject(knownObjectIndex));
+
+         if (comp()->useConstRefs())
+            {
+            return knot->constSymRef(knownObjectIndex);
+            }
          }
 
       symRef = findOrCreateCPSymbol(
@@ -1669,8 +1713,11 @@ J9::SymbolReferenceTable::findOrCreateMethodTypeSymbol(TR::ResolvedMethodSymbol 
          cpIndex,
          TR::Address,
          true,
-         methodTypeConst,
-         knownObjectIndex);
+         methodTypeConst
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+         , knownObjectIndex
+#endif
+         );
       }
    TR::StaticSymbol * sym = (TR::StaticSymbol *)symRef->getSymbol();
    sym->setConstMethodType();
@@ -1698,9 +1745,19 @@ J9::SymbolReferenceTable::findOrCreateMethodHandleSymbol(TR::ResolvedMethodSymbo
 
          J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
          cpg->addEdge(owningMethod, cpg->knownObject(knownObjectIndex));
+
+         if (comp()->useConstRefs())
+            {
+            return knot->constSymRef(knownObjectIndex);
+            }
          }
 
-      symRef = findOrCreateCPSymbol(owningMethodSymbol, cpIndex, TR::Address, true, methodHandleConst, knownObjectIndex);
+      symRef = findOrCreateCPSymbol(
+         owningMethodSymbol, cpIndex, TR::Address, true, methodHandleConst
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+         , knownObjectIndex
+#endif
+         );
       }
    TR::StaticSymbol * sym = (TR::StaticSymbol *)symRef->getSymbol();
    sym->setConstMethodHandle();
@@ -1957,7 +2014,8 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
    if (sharesSymbol)
       symRef->setReallySharesSymbol();
 
-   symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), cpIndex, unresolvedIndex, TR::KnownObjectTable::UNKNOWN);
+   symRef = new (trHeapMemory()) TR::SymbolReference(
+      self(), sym, owningMethodSymbol->getResolvedMethodIndex(), cpIndex, unresolvedIndex);
 
    checkUserField(symRef);
 
@@ -2796,4 +2854,19 @@ J9::SymbolReferenceTable::getNonHelperSymbolName(CommonNonhelperSymbol nonHelper
 #else
    return NULL;
 #endif
+   }
+
+void
+J9::SymbolReferenceTable::flagConstRefSymbol(void *addr, TR::Symbol *sym)
+   {
+   TR_J9VMBase *fej9 = comp()->fej9();
+   TR_OpaqueClassBlock *clazz = fej9->getObjectClassAt((uintptr_t)addr);
+   if (fej9->isString(clazz))
+      {
+      sym->setConstString();
+      }
+   else
+      {
+      sym->setNonSpecificConstObject();
+      }
    }

@@ -3612,3 +3612,39 @@ TR_J9SharedCacheServerVM::isResolvedVirtualDispatchGuaranteed(TR::Compilation *c
    {
    return isAotResolvedVirtualDispatchGuaranteed(comp);
    }
+
+void
+TR_J9ServerVM::addBondMethodsFromClient(
+   TR::Compilation *comp, const std::vector<TR_ClientBondMethod> &methods)
+   {
+   bool trace = comp->getOption(TR_TraceRetainedMethods);
+   OMR::Logger *log = comp->log();
+
+   // The owning method shouldn't matter here. Just use the outermost method.
+   TR_ResolvedMethod *owningMethod = comp->getMethodBeingCompiled();
+   for (auto it = methods.begin(), end = methods.end(); it != end; it++)
+      {
+      TR_OpaqueMethodBlock *m = std::get<0>(*it);
+      const TR_ResolvedJ9JITServerMethodInfo &info = std::get<1>(*it);
+      TR_ResolvedMethod *rm =
+         createResolvedMethod(comp->trMemory(), m, owningMethod, info);
+
+      logprintf(
+         trace, log,
+         "bond method from client: %p %.*s.%.*s%.*s\n",
+         rm->getNonPersistentIdentifier(),
+         rm->classNameLength(),
+         rm->classNameChars(),
+         rm->nameLength(),
+         rm->nameChars(),
+         rm->signatureLength(),
+         rm->signatureChars());
+
+      comp->addBondMethodFromClient(rm);
+      }
+
+   if (!methods.empty())
+      {
+      logprintln(trace, log);
+      }
+   }

@@ -218,6 +218,9 @@ J9::Compilation::Compilation(int32_t id,
    _thunkRecords(decltype(_thunkRecords)::allocator_type(heapMemoryRegion)),
    _numPermanentLoaders(numPermanentLoaders),
    _vectorApiTransformationPerformed(false),
+   _clientAlreadyRepeatedRetainedMethodsAnalysis(false),
+   _clientRetainedMethods(NULL),
+   _bondMethodsFromClient(heapMemoryRegion),
 #endif /* defined(J9VM_OPT_JITSERVER) */
 #if !defined(PERSISTENT_COLLECTIONS_UNSUPPORTED)
    _aotMethodDependencies(decltype(_aotMethodDependencies)::allocator_type(heapMemoryRegion)),
@@ -226,7 +229,8 @@ J9::Compilation::Compilation(int32_t id,
    _constProvenanceGraph(new (heapMemoryRegion) J9::ConstProvenanceGraph(self())),
    _osrProhibitedOverRangeOfTrees(false),
    _wasFearPointAnalysisDone(false),
-   _permanentLoadersInitialized(false)
+   _permanentLoadersInitialized(false),
+   _crashedDueToOrphanedConstRefs(false)
    {
    _symbolValidationManager = new (self()->region()) TR::SymbolValidationManager(self()->region(), compilee, self());
 
@@ -248,6 +252,19 @@ J9::Compilation::Compilation(int32_t id,
    if (!self()->ilGenRequest().details().supportsInvalidation())
       {
       self()->getOptions()->setOption(TR_DontInlineUnloadableMethods);
+      }
+
+#if !defined(J9VM_OPT_OPENJDK_METHODHANDLE)
+   // With J9 method handles, we can't do const refs because they would leak
+   // memory. Const refs for known objects reachable from a custom thunk would
+   // be attributed to the handle class in java/lang/invoke, which is permanent.
+   self()->getOptions()->setOption(TR_EnableConstRefs, false);
+#endif
+
+   // Const provenance is only needed for const refs.
+   if (!self()->useConstRefs())
+      {
+      self()->getOptions()->setOption(TR_DisableConstProvenance);
       }
 
    // Add known object index to parm 0 so that other optmizations can be unlocked.
@@ -1881,5 +1898,47 @@ J9::Compilation::addThunkRecord(const AOTCacheThunkRecord *record)
       else
          _aotCacheStore = false;
       }
+   }
+
+bool
+J9::Compilation::clientAlreadyRepeatedRetainedMethodsAnalysis()
+   {
+   TR_ASSERT_FATAL(self()->isOutOfProcessCompilation(), "server only");
+   return _clientAlreadyRepeatedRetainedMethodsAnalysis;
+   }
+
+void
+J9::Compilation::setClientAlreadyRepeatedRetainedMethodsAnalysis()
+   {
+   TR_ASSERT_FATAL(self()->isOutOfProcessCompilation(), "server only");
+   _clientAlreadyRepeatedRetainedMethodsAnalysis = true;
+   }
+
+OMR::RetainedMethodSet *
+J9::Compilation::clientRetainedMethods()
+   {
+   TR_ASSERT_FATAL(self()->isRemoteCompilation(), "client only");
+   return _clientRetainedMethods;
+   }
+
+void
+J9::Compilation::setClientRetainedMethods(OMR::RetainedMethodSet *root)
+   {
+   TR_ASSERT_FATAL(self()->isRemoteCompilation(), "client only");
+   _clientRetainedMethods = root;
+   }
+
+const TR::vector<TR_ResolvedMethod*, TR::Region&> &
+J9::Compilation::bondMethodsFromClient()
+   {
+   TR_ASSERT_FATAL(self()->isOutOfProcessCompilation(), "server only");
+   return _bondMethodsFromClient;
+   }
+
+void
+J9::Compilation::addBondMethodFromClient(TR_ResolvedMethod *m)
+   {
+   TR_ASSERT_FATAL(self()->isOutOfProcessCompilation(), "server only");
+   _bondMethodsFromClient.push_back(m);
    }
 #endif /* defined(J9VM_OPT_JITSERVER) */

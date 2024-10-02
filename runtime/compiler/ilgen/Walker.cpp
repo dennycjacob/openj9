@@ -3441,6 +3441,24 @@ TR_J9ByteCodeIlGenerator::genInvokeHandle(TR::SymbolReference *invokeExactSymRef
 void
 TR_J9ByteCodeIlGenerator::loadInvokeCacheArrayElements(TR::SymbolReference *tableEntrySymRef, uintptr_t * invokeCacheArray, bool isUnresolved)
    {
+   TR::KnownObjectTable::Index appendixKoi = TR::KnownObjectTable::UNKNOWN;
+   if (!isUnresolved)
+      {
+      appendixKoi = fej9()->getKnotIndexOfInvokeCacheArrayAppendixElement(comp(), invokeCacheArray);
+      if (appendixKoi != TR::KnownObjectTable::UNKNOWN)
+         {
+         // The caller got invokeCacheArray from _methodSymbol->getResolvedMethod().
+         J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
+         cpg->addEdge(_methodSymbol->getResolvedMethod(), cpg->knownObject(appendixKoi));
+
+         if (comp()->useConstRefs())
+            {
+            loadSymbol(TR::aload, comp()->getKnownObjectTable()->constSymRef(appendixKoi));
+            return;
+            }
+         }
+      }
+
    loadSymbol(TR::aload, tableEntrySymRef);
    loadConstant(TR::iconst, JSR292_invokeCacheArrayAppendixIndex);
    loadArrayElement(TR::Address, comp()->il.opCodeForIndirectArrayLoad(TR::Address), false, false);
@@ -3454,28 +3472,17 @@ TR_J9ByteCodeIlGenerator::loadInvokeCacheArrayElements(TR::SymbolReference *tabl
       loadConstant(TR::iconst, JSR292_invokeCacheArrayMemberNameIndex);
       loadArrayElement(TR::Address, comp()->il.opCodeForIndirectArrayLoad(TR::Address), false, false);
       }
-   else
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
+   else if (appendixKoi != TR::KnownObjectTable::UNKNOWN)
       {
-      // When the callSite table entry (for invokedynamic) or methodType table entry (for invokehandle)
-      // is resolved, we can improve the appendix object symRef with known object index as we can get
-      // the object reference of the appendix object from the invokeCacheArray entry
-      TR::KnownObjectTable::Index koi =
-         fej9()->getKnotIndexOfInvokeCacheArrayAppendixElement(comp(), invokeCacheArray);
+      TR::Node *appendixNode = _stack->top();
+      TR::SymbolReference *appendixSymRef =
+         comp()->getSymRefTab()->findOrCreateSymRefWithKnownObject(
+            appendixNode->getSymbolReference(), appendixKoi);
 
-      if (koi != TR::KnownObjectTable::UNKNOWN)
-         {
-         // The caller got invokeCacheArray from _methodSymbol->getResolvedMethod().
-         J9::ConstProvenanceGraph *cpg = comp()->constProvenanceGraph();
-         cpg->addEdge(_methodSymbol->getResolvedMethod(), cpg->knownObject(koi));
-
-         TR::Node *appendixNode = _stack->top();
-         TR::SymbolReference *appendixSymRef =
-            comp()->getSymRefTab()->findOrCreateSymRefWithKnownObject(
-               appendixNode->getSymbolReference(), koi);
-
-         appendixNode->setSymbolReference(appendixSymRef);
-         }
+      appendixNode->setSymbolReference(appendixSymRef);
       }
+#endif
    }
 
 #endif
@@ -3704,7 +3711,10 @@ TR_J9ByteCodeIlGenerator::genInvoke(TR::SymbolReference * symRef, TR::Node *indi
       "required constant at bc index %d (invoke*): missing call node",
       _bcIndex);
 
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
    markRequiredKnownObjectIndex(callNode, requiredKoi);
+#endif
+
    return callNode;
    }
 
@@ -5152,7 +5162,9 @@ TR_J9ByteCodeIlGenerator::loadInstance(TR::SymbolReference * symRef)
          }
       }
 
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
    markRequiredKnownObjectIndex(load, requiredKoi);
+#endif
 
    static char *disableFinalFieldFoldingInILGen = feGetEnv("TR_DisableFinalFieldFoldingInILGen");
    static char *disableInstanceFinalFieldFoldingInILGen = feGetEnv("TR_DisableInstanceFinalFieldFoldingInILGen");
@@ -5508,7 +5520,9 @@ TR_J9ByteCodeIlGenerator::loadStatic(int32_t cpIndex)
 
    push(load);
 
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
    markRequiredKnownObjectIndex(load, requiredKoi);
+#endif
 
    static char *disableFinalFieldFoldingInILGen = feGetEnv("TR_DisableFinalFieldFoldingInILGen");
    static char *disableStaticFinalFieldFoldingInILGen = feGetEnv("TR_DisableStaticFinalFieldFoldingInILGen");
@@ -7595,7 +7609,7 @@ TR_J9ByteCodeIlGenerator::pushRequiredConst(TR::KnownObjectTable::Index *koi)
          {
          value = TR::AnyConst::makeAddress(0);
          }
-      else
+      else if (!comp()->useConstRefs())
          {
          *koi = value.getKnownObjectIndex();
          return false; // did not push
@@ -7612,6 +7626,11 @@ TR_J9ByteCodeIlGenerator::pushRequiredConst(TR::KnownObjectTable::Index *koi)
       loadConstant(TR::dconst, value.getDouble());
    else if (value.isAddress())
       loadConstant(TR::aconst, (void*)value.getAddress());
+   else if (value.isKnownObject())
+      {
+      TR::KnownObjectTable::Index i = value.getKnownObjectIndex();
+      loadSymbol(TR::aload, comp()->getKnownObjectTable()->constSymRef(i));
+      }
    else
       {
       TR_ASSERT_FATAL(
@@ -7626,6 +7645,7 @@ TR_J9ByteCodeIlGenerator::pushRequiredConst(TR::KnownObjectTable::Index *koi)
    return true;
    }
 
+#ifdef TR_ALLOW_NON_CONST_KNOWN_OBJECTS
 /**
  * \brief Mark \p node with the known object index from pushRequiredConst().
  *
@@ -7691,3 +7711,4 @@ TR_J9ByteCodeIlGenerator::markRequiredKnownObjectIndex(
          node->setSymbolReference(improvedSymRef);
       }
    }
+#endif

@@ -161,7 +161,8 @@ jitDumpRecompileWithTracing(
       bool isAOTBody,
       void *oldStartPC,
       TR::FILE *jitdumpFile,
-      OMR::Logger *jitdumpLogger)
+      OMR::Logger *jitdumpLogger,
+      bool crashWasDueToOrphanedConstRefs = false)
    {
    PORT_ACCESS_FROM_VMC(vmThread);
    J9Class *clazz;
@@ -224,6 +225,7 @@ jitDumpRecompileWithTracing(
 
    // Set the VM state of the crashed thread so the diagnostic thread can use consume it
    compInfo->setVMStateOfCrashedThread(vmThread->omrVMThread->vmState);
+   compInfo->setCrashWasDueToOrphanedConstRefs(crashWasDueToOrphanedConstRefs);
 
    J9::JitDumpMethodDetails details(ramMethod, optionsFromOriginalCompile, isAOTBody);
    auto queued = false;
@@ -702,8 +704,8 @@ runJitdump(char *label, J9RASdumpContext *context, J9RASdumpAgent *agent)
                   comp->compileRelocatableCode(),
                   methodBeingCompiled->_oldStartPC,
                   jitdumpFile,
-                  jitdumpLogger
-               );
+                  jitdumpLogger,
+                  comp->crashedDueToOrphanedConstRefs());
                }
             }
          }
