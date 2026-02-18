@@ -1,5 +1,5 @@
 /* zconf.h -- configuration of the zlib compression library
- * Copyright (C) 1995-2024 Jean-loup Gailly, Mark Adler
+ * Copyright (C) 1995-2026 Jean-loup Gailly, Mark Adler
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
@@ -40,9 +40,12 @@
 #  ifndef Z_SOLO
 #    define compress              j9zlib_compress
 #    define compress2             j9zlib_compress2
+#    define compress_z            z_compress_z
+#    define compress2_z           z_compress2_z
 #    define compressBound         z_compressBound
+#    define compressBound_z       z_compressBound_z
 #  endif
-/* Source is modified from the original zlib version in order to avoid a conflict with the OpenJ9 J9ZipEntry structure */
+/* Source is modified from the original zlib version in order to avoid a conflict with the OpenJ9 J9ZipEntry structure. */
 #  define crc32(x, y, z)        j9zlib_crc32(x, y, z)
 #  define crc32_combine         z_crc32_combine
 #  define crc32_combine64       z_crc32_combine64
@@ -52,6 +55,7 @@
 #  define crc32_z               z_crc32_z
 #  define deflate               j9zlib_deflate
 #  define deflateBound          z_deflateBound
+#  define deflateBound_z        z_deflateBound_z
 #  define deflateCopy           j9zlib_deflateCopy
 #  define deflateEnd            j9zlib_deflateEnd
 #  define deflateGetDictionary  z_deflateGetDictionary
@@ -67,6 +71,7 @@
 #  define deflateSetDictionary  j9zlib_deflateSetDictionary
 #  define deflateSetHeader      z_deflateSetHeader
 #  define deflateTune           z_deflateTune
+#  define deflateUsed           z_deflateUsed
 #  define deflate_copyright     z_deflate_copyright
 #  define get_crc_table         j9zlib_get_crc_table
 #  ifndef Z_SOLO
@@ -136,9 +141,12 @@
 #  define inflate_copyright     z_inflate_copyright
 #  define inflate_fast          z_inflate_fast
 #  define inflate_table         z_inflate_table
+#  define inflate_fixed         z_inflate_fixed
 #  ifndef Z_SOLO
 #    define uncompress            j9zlib_uncompress
 #    define uncompress2           z_uncompress2
+#    define uncompress_z          z_uncompress_z
+#    define uncompress2_z         z_uncompress2_z
 #  endif
 #  define zError                j9zlib_zError
 #  ifndef Z_SOLO
@@ -243,10 +251,12 @@
 #  endif
 #endif
 
-#if defined(ZLIB_CONST) && !defined(z_const)
-#  define z_const const
-#else
-#  define z_const
+#ifndef z_const
+#  ifdef ZLIB_CONST
+#    define z_const const
+#  else
+#    define z_const
+#  endif
 #endif
 
 #ifdef Z_SOLO
@@ -442,11 +452,11 @@ typedef uLong FAR uLongf;
    typedef unsigned long z_crc_t;
 #endif
 
-#ifdef HAVE_UNISTD_H    /* may be set to #if 1 by ./configure */
+#if HAVE_UNISTD_H-0     /* may be set to #if 1 by ./configure */
 #  define Z_HAVE_UNISTD_H
 #endif
 
-#ifdef HAVE_STDARG_H    /* may be set to #if 1 by ./configure */
+#if HAVE_STDARG_H-0     /* may be set to #if 1 by ./configure */
 #  define Z_HAVE_STDARG_H
 #endif
 
@@ -479,12 +489,8 @@ typedef uLong FAR uLongf;
 #endif
 
 #ifndef Z_HAVE_UNISTD_H
-#  ifdef __WATCOMC__
-#    define Z_HAVE_UNISTD_H
-#  endif
-#endif
-#ifndef Z_HAVE_UNISTD_H
-#  if defined(_LARGEFILE64_SOURCE) && !defined(_WIN32)
+#  if defined(__WATCOMC__) || defined(__GO32__) || \
+      (defined(_LARGEFILE64_SOURCE) && !defined(_WIN32))
 #    define Z_HAVE_UNISTD_H
 #  endif
 #endif
@@ -519,17 +525,19 @@ typedef uLong FAR uLongf;
 #endif
 
 #ifndef z_off_t
-#  define z_off_t long
+#  define z_off_t long long
 #endif
 
 #if !defined(_WIN32) && defined(Z_LARGE64)
 #  define z_off64_t off64_t
+#elif defined(__MINGW32__)
+#  define z_off64_t long long
+#elif defined(_WIN32) && !defined(__GNUC__)
+#  define z_off64_t __int64
+#elif defined(__GO32__)
+#  define z_off64_t offset_t
 #else
-#  if defined(_WIN32) && !defined(__GNUC__)
-#    define z_off64_t __int64
-#  else
-#    define z_off64_t z_off_t
-#  endif
+#  define z_off64_t z_off_t
 #endif
 
 /* MVS linker does not support external names larger than 8 bytes */
