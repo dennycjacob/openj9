@@ -6050,6 +6050,12 @@ J9::CodeGenerator::sortConstRefs()
       log->println();
       }
 
+// Temporarily disable the sorting step on z/OS due to lack of support of the
+// variant of std::sort used here in the version of XLC used for z/OS builds,
+// resulting in a build error. This temporary measure is meant to allow other
+// platforms to benefit from const refs sorting while an alternative
+// implementation is worked on for z/OS.
+#if !defined(J9ZOS390)
    // Now that owning classes are assigned, sort the const refs by owning class.
    // The important thing is really just grouping by owning class, which ensures
    // that we'll create no more than one const ref array per class.
@@ -6076,6 +6082,7 @@ J9::CodeGenerator::sortConstRefs()
 
    OwningClassCmp cmp(_constRefOwningClasses);
    std::sort(_constRefSortOrder.begin(), _constRefSortOrder.end(), cmp);
+#endif // !defined(J9ZOS390)
 
    if (trace)
       {
