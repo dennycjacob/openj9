@@ -1,0 +1,49 @@
+name: Cherry-pick Test
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Target branch for cherry-pick'
+        required: true
+        type: string
+      commits:
+        description: 'Commit SHA to cherry-pick'
+        required: true
+        type: string
+      labels:
+        description: 'Labels for the operation'
+        default: 'automated-test'
+        type: string
+
+jobs:
+  cherry-pick:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+      - name: Cherry-pick commit
+        uses: carloscastrojumo/github-cherry-pick-action@v1.0.9
+        with:
+          branch: ${{ github.event.inputs.branch }}
+          labels: ${{ github.event.inputs.labels }}
+          commits: ${{ github.event.inputs.commits }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push changes
+        run: |
+          git push origin ${{ github.event.inputs.branch }}
