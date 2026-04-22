@@ -77,6 +77,12 @@ public class OptionsFileTest {
 		case "notExistOptionsFile":
 			notExistOptionsFile();
 			break;
+		case "errorMsgNoDebugOnRestoreAgenlibJDWP":
+			errorMsgNoDebugOnRestoreAgenlibJDWP();
+			break;
+		case "errorMsgNoDebugOnRestoreXrunjdwp":
+			errorMsgNoDebugOnRestoreXrunjdwp();
+			break;
 		default:
 			throw new RuntimeException("incorrect parameters");
 		}
@@ -361,6 +367,34 @@ public class OptionsFileTest {
 		System.out.println("Pre-checkpoint");
 		CRIUTestUtils.checkPointJVM(criuSupport, imagePath, true);
 		// Restore continues if the post-restore option file doesn't exist.
+		System.out.println("Post-checkpoint");
+	}
+
+	static void errorMsgNoDebugOnRestoreAgenlibJDWP() {
+		String optionsContents = "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y";
+		Path optionsFilePath = CRIUTestUtils.createOptionsFile("options", optionsContents);
+
+		Path imagePath = Paths.get("cpData");
+		CRIUTestUtils.createCheckpointDirectory(imagePath);
+		CRIUSupport criuSupport = CRIUSupport.getCRIUSupport().setImageDir(imagePath)
+				.registerRestoreOptionsFile(optionsFilePath);
+
+		System.out.println("Pre-checkpoint");
+		CRIUTestUtils.checkPointJVM(criuSupport, imagePath, true);
+		System.out.println("Post-checkpoint");
+	}
+
+	static void errorMsgNoDebugOnRestoreXrunjdwp() {
+		String optionsContents = "-Xrunjdwp:transport=dt_socket,server=y,suspend=y";
+		Path optionsFilePath = CRIUTestUtils.createOptionsFile("options", optionsContents);
+
+		Path imagePath = Paths.get("cpData");
+		CRIUTestUtils.createCheckpointDirectory(imagePath);
+		CRIUSupport criuSupport = CRIUSupport.getCRIUSupport().setImageDir(imagePath)
+				.registerRestoreOptionsFile(optionsFilePath);
+
+		System.out.println("Pre-checkpoint");
+		CRIUTestUtils.checkPointJVM(criuSupport, imagePath, true);
 		System.out.println("Post-checkpoint");
 	}
 }

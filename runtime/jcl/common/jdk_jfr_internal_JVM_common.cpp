@@ -22,6 +22,7 @@
 
 #include "j9.h"
 #include "jni.h"
+#include "jclprots.h"
 
 #include "ObjectAccessBarrierAPI.hpp"
 #include "VMHelpers.hpp"
@@ -49,7 +50,7 @@ Java_jdk_jfr_internal_JVM_registerNatives(JNIEnv *env, jclass clazz)
 void JNICALL
 Java_jdk_jfr_internal_JVM_beginRecording(JNIEnv *env, jobject obj)
 {
-	// TODO: implementation
+	Java_com_ibm_oti_vm_VM_startJFR(env, NULL);
 }
 
 jlong JNICALL
@@ -75,14 +76,22 @@ Java_jdk_jfr_internal_JVM_emitEvent(JNIEnv *env, jobject obj, jlong eventTypeId,
 void JNICALL
 Java_jdk_jfr_internal_JVM_endRecording(JNIEnv *env, jobject obj)
 {
-	// TODO: implementation
+	Java_com_ibm_oti_vm_VM_stopJFR(env, NULL);
 }
 
 jobject JNICALL
 Java_jdk_jfr_internal_JVM_getAllEventClasses(JNIEnv *env, jobject obj)
 {
-	// TODO: implementation
-	return NULL;
+	J9VMThread *currentThread = (J9VMThread*) env;
+	J9JavaVM *vm = currentThread->javaVM;
+	J9InternalVMFunctions *vmFuncs = vm->internalVMFunctions;
+	jobject result = NULL;
+
+	vmFuncs->internalEnterVMFromJNI(currentThread);
+	result = vmFuncs->j9jni_createLocalRef(env, vmFuncs->jvmUpcallTransformArrayToList(currentThread, NULL));
+	vmFuncs->internalExitVMToJNI(currentThread);
+
+	return result;
 }
 
 jlong JNICALL
@@ -265,7 +274,7 @@ Java_jdk_jfr_internal_JVM_setMemorySize(JNIEnv *env, jobject obj, jlong size)
 void JNICALL
 Java_jdk_jfr_internal_JVM_setOutput(JNIEnv *env, jobject obj, jstring file)
 {
-	// TODO: implementation
+	Java_com_ibm_oti_vm_VM_setJFRRecordingFileName(env, NULL, file);
 }
 
 void JNICALL
@@ -348,6 +357,7 @@ Java_jdk_jfr_internal_JVM_createJFR(JNIEnv *env, jobject obj, jboolean simulateF
 		goto done;
 	}
 
+	vm->extendedRuntimeFlags3 |= J9_EXTENDED_RUNTIME3_ENABLE_JFR_CLASSLOAD_TRANSFORM;
 done:
 	return rc;
 }
@@ -359,6 +369,8 @@ Java_jdk_jfr_internal_JVM_destroyJFR(JNIEnv *env, jobject obj)
 	J9VMThread *currentThread = (J9VMThread *)env;
 	J9JavaVM *vm = currentThread->javaVM;
 	J9InternalVMFunctions *vmFuncs = vm->internalVMFunctions;
+
+	vm->extendedRuntimeFlags3 &= ~J9_EXTENDED_RUNTIME3_ENABLE_JFR_CLASSLOAD_TRANSFORM;
 
 	vmFuncs->internalEnterVMFromJNI(currentThread);
 	vmFuncs->j9jni_deleteGlobalRef(env, vm->jfrState.jfrEventClassRef, FALSE);

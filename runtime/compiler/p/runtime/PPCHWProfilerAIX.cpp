@@ -200,8 +200,8 @@ static bool pmapiInitPM()
     TR_PPCHWProfilerPMUConfig *configs = TR_PPCHWProfilerPMUConfig::getPMUConfigs();
 
     const int filter = PM_VERIFIED | PM_UNVERIFIED | PM_CAVEAT;
-    int rc;
-    if (rc = pmapi.pm_initialize(filter | PM_GET_GROUPS, &pmapi.pminfo, &pmapi.pmgroups, PM_CURRENT)) {
+    int rc = pmapi.pm_initialize(filter | PM_GET_GROUPS, &pmapi.pminfo, &pmapi.pmgroups, PM_CURRENT);
+    if (rc != 0) {
         VERBOSE("Failed to initialize PMAPI, rc: %d, %s", rc, pmapi.pm_strerror("pm_initialize", rc));
         goto fail;
     }
@@ -297,12 +297,14 @@ bool TR_PPCHWProfiler::initializeThread(J9VMThread *vmThread)
                 pmapi.pm_strerror("pm_stop_mythread", rc));
             goto fail;
         }
-        if (rc = pmapi.pm_delete_program_mythread()) {
+        rc = pmapi.pm_delete_program_mythread();
+        if (rc != 0) {
             VERBOSE("Failed to delete PMAPI program for J9VMThread=%p, rc: %d, %s", vmThread, rc,
                 pmapi.pm_strerror("pm_delete_program_mythread", rc));
             goto fail;
         }
-        if (rc = pmapi.pm_set_program_mythread(&prog)) {
+        rc = pmapi.pm_set_program_mythread(&prog);
+        if (rc != 0) {
             VERBOSE("Failed to set PMAPI program for J9VMThread=%p, rc: %d, %s", vmThread, rc,
                 pmapi.pm_strerror("pm_set_program_mythread", rc));
             goto fail;
@@ -349,22 +351,26 @@ bool TR_PPCHWProfiler::initializeThread(J9VMThread *vmThread)
     uint32_t sampleRates[MAX_COUNTERS];
     for (int i = 0; i < MAX_PMCS; ++i)
         sampleRates[i] = 0x80000000;
-    if (rc = pmapi.pm_set_counter_frequency_mythread(sampleRates)) {
+    rc = pmapi.pm_set_counter_frequency_mythread(sampleRates);
+    if (rc != 0) {
         VERBOSE("Failed to set PMU counter frequencies for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_set_counter_frequency_mythread", rc));
         goto freecontext;
     }
-    if (rc = pmapi.pm_set_ebb_handler(FUNCTION_ADDRESS(ebbHandler), context)) {
+    rc = pmapi.pm_set_ebb_handler(FUNCTION_ADDRESS(ebbHandler), context);
+    if (rc != 0) {
         VERBOSE("Failed to set EBB handler for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_set_ebb_handler", rc));
         goto freecontext;
     }
-    if (rc = pmapi.pm_enable_bhrb(configs[currentConfig].bhrbFilter)) {
+    rc = pmapi.pm_enable_bhrb(configs[currentConfig].bhrbFilter);
+    if (rc != 0) {
         VERBOSE("Failed to enable BHRB for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_enable_bhrb", rc));
         goto clearebbh;
     }
-    if (rc = pmapi.pm_start_mythread()) {
+    rc = pmapi.pm_start_mythread();
+    if (rc != 0) {
         VERBOSE("Failed to start PMU counting on J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_start_mythread", rc));
         goto disablebhrb;
@@ -420,15 +426,18 @@ bool TR_PPCHWProfiler::initializeThread(J9VMThread *vmThread)
     }
 stopcounting:
     VERBOSE("Lost PMU access during initialization on J9VMThread=%p, will retry later.", vmThread);
-    if (rc = pmapi.pm_stop_mythread())
+    rc = pmapi.pm_stop_mythread();
+    if (rc != 0)
         VERBOSE("Failed to stop counting on J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_stop_mythread", rc));
 disablebhrb:
-    if (rc = pmapi.pm_disable_bhrb())
+    rc = pmapi.pm_disable_bhrb();
+    if (rc != 0)
         VERBOSE("Failed to disable BHRB for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_delete_program_mythread", rc));
 clearebbh:
-    if (rc = pmapi.pm_clear_ebb_handler(NULL, NULL))
+    rc = pmapi.pm_clear_ebb_handler(NULL, NULL);
+    if (rc != 0)
         VERBOSE("Failed to clear EBB handler for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_delete_program_mythread", rc));
 freecontext:
@@ -439,7 +448,8 @@ freebufs:
             freeBuffer(bufs[i], configs[currentConfig].bufferElementSize[i] * configs[currentConfig].bufferSize[i]);
     }
 deleteprog:
-    if (rc = pmapi.pm_delete_program_mythread())
+    rc = pmapi.pm_delete_program_mythread();
+    if (rc != 0)
         VERBOSE("Failed to delete PMAPI program for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_delete_program_mythread", rc));
 fail:
@@ -460,12 +470,13 @@ bool TR_PPCHWProfiler::deinitializeThread(J9VMThread *vmThread)
 
     const uint64_t freeze = MMCR0_FC;
     tr_mmcr_write(MMCR0, &freeze);
-    int rc;
-    if (rc = pmapi.pm_stop_mythread())
+    int rc = pmapi.pm_stop_mythread();
+    if (rc != 0)
         VERBOSE("Failed to stop counting on J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_stop_mythread", rc));
     TR_PPCHWProfilerEBBContext *context;
-    if (rc = pmapi.pm_clear_ebb_handler(NULL, (void **)&context))
+    rc = pmapi.pm_clear_ebb_handler(NULL, (void **)&context);
+    if (rc != 0)
         VERBOSE("Failed to clear EBB handler for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_clear_ebb_handler", rc));
     else
@@ -482,7 +493,8 @@ bool TR_PPCHWProfiler::deinitializeThread(J9VMThread *vmThread)
     VERBOSE("\tUnknown events: %u", context->unknownEventCount);
 #endif /* DEBUG || PPCRI_VERBOSE */
     jitPersistentFree(context);
-    if (rc = pmapi.pm_delete_program_mythread())
+    rc = pmapi.pm_delete_program_mythread();
+    if (rc != 0)
         VERBOSE("Failed to delete PMAPI program for J9VMThread=%p, rc: %d, %s", vmThread, rc,
             pmapi.pm_strerror("pm_delete_program_mythread", rc));
 
@@ -491,4 +503,3 @@ bool TR_PPCHWProfiler::deinitializeThread(J9VMThread *vmThread)
 
     return !IS_THREAD_RI_INITIALIZED(vmThread);
 }
-

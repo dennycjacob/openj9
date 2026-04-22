@@ -22,6 +22,7 @@
 
 #include "j9.h"
 #include "jni.h"
+#include "jclprots.h"
 
 extern "C" {
 
@@ -34,8 +35,7 @@ Java_jdk_jfr_internal_JVM_markChunkFinal(JNIEnv *env, jobject obj)
 jboolean JNICALL
 Java_jdk_jfr_internal_JVM_isRecording(JNIEnv *env, jobject obj)
 {
-	// TODO: implementation
-	return JNI_FALSE;
+	return Java_com_ibm_oti_vm_VM_isJFRRecordingStarted(env, NULL);
 }
 
 void JNICALL
@@ -98,7 +98,7 @@ Java_jdk_jfr_internal_JVM_getTypeId__Ljava_lang_String_2(JNIEnv *env, jobject ob
 	if (NULL == typeName) {
 		vmFuncs->setNativeOutOfMemoryError(currentThread, 0, 0);
 	} else {
-		result = vmFuncs->getTypeIdUTF8(currentThread, typeName);
+		result = vmFuncs->getTypeIdUTF8(currentThread, vm->systemClassLoader, typeName, FALSE);
 		if (buf != (char *)typeName) {
 			PORT_ACCESS_FROM_JAVAVM(vm);
 			j9mem_free_memory(typeName);

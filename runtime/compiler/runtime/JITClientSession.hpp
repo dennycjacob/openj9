@@ -256,6 +256,7 @@ public:
         // This information is not collected when the class is sent from the client to server. Rather, it is
         // populated when the server needs it.
         PersistentVector<int32_t> _referenceSlotsInClass; // Array of N int32_t values. The last one has a value of 0.
+        int32_t _arity; // subtely different from _numDimensions...
     }; // struct ClassInfo
 
     /**

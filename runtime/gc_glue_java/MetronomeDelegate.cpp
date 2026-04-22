@@ -1110,11 +1110,17 @@ void
 MM_MetronomeDelegate::waitForExclusiveVMAccess(MM_EnvironmentBase *env, bool waitRequired)
 {
 	J9VMThread *mainGCThread = (J9VMThread *)env->getLanguageVMThread();
-	
+	J9VMThread *vmThread = (J9VMThread *)env->getOmrVMThread()->_language_vmthread;
+	Assert_MM_true(mainGCThread == vmThread);
+
+	Assert_MM_true(0 == mainGCThread->omrVMThread->exclusiveCount);
 	if (waitRequired) {
 		_javaVM->internalVMFunctions->waitForExclusiveVMAccessMetronomeTemp((J9VMThread *)env->getLanguageVMThread(), _vmResponsesRequiredForExclusiveVMAccess, _jniResponsesRequiredForExclusiveVMAccess);
+	} else {
+		Assert_MM_true(0 == (mainGCThread->publicFlags & J9_PUBLIC_FLAGS_VM_ACCESS));
+		VM_VMAccess::setPublicFlags(mainGCThread, J9_PUBLIC_FLAGS_VM_ACCESS);
+		++(mainGCThread->omrVMThread->exclusiveCount);
 	}
-	++(mainGCThread->omrVMThread->exclusiveCount);
 }
 
 /**
@@ -1143,8 +1149,9 @@ void
 MM_MetronomeDelegate::releaseExclusiveVMAccess(MM_EnvironmentBase *env, bool releaseRequired)
 {
 	J9VMThread *mainGCThread = (J9VMThread *)env->getLanguageVMThread();
+	J9VMThread *vmThread = (J9VMThread *)env->getOmrVMThread()->_language_vmthread;
+	Assert_MM_true(mainGCThread == vmThread);
 
-	--(mainGCThread->omrVMThread->exclusiveCount);
 	if (releaseRequired) {
 		_javaVM->internalVMFunctions->releaseExclusiveVMAccessMetronome(mainGCThread);
 		/* Set the exclusive access response counts to an unusual value,
@@ -1153,7 +1160,12 @@ MM_MetronomeDelegate::releaseExclusiveVMAccess(MM_EnvironmentBase *env, bool rel
 		 */
 		_vmResponsesRequiredForExclusiveVMAccess = 0x7fffffff;
 		_jniResponsesRequiredForExclusiveVMAccess = 0x7fffffff;
+	} else {
+		--(mainGCThread->omrVMThread->exclusiveCount);
+		Assert_MM_true(J9_PUBLIC_FLAGS_VM_ACCESS == (mainGCThread->publicFlags & J9_PUBLIC_FLAGS_VM_ACCESS));
+		VM_VMAccess::clearPublicFlags(mainGCThread, J9_PUBLIC_FLAGS_VM_ACCESS);
 	}
+	Assert_MM_true(0 == mainGCThread->omrVMThread->exclusiveCount);
 }
 
 #if defined(J9VM_GC_DYNAMIC_CLASS_UNLOADING)

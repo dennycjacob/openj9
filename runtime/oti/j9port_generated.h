@@ -554,7 +554,7 @@ extern J9_CFUNC int32_t j9port_isCompatible(struct J9PortLibraryVersion *expecte
 #define j9filestream_write(param1, param2, param3) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_write(OMRPORT_FROM_J9PORT(privatePortLibrary),param1, param2, param3)
 #define j9filestream_write_text(param1, param2, param3, param4) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_write_text(OMRPORT_FROM_J9PORT(privatePortLibrary),param1, param2, param3, param4)
 #define j9filestream_vprintf(param1, param2, param3) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_vprintf(OMRPORT_FROM_J9PORT(privatePortLibrary),param1, param2, param3)
-#define j9filestream_printf(param1, ...) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_printf(OMRPORT_FROM_J9PORT(param1), ## __VA_ARGS__)
+#define j9filestream_printf(param1, ...) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_printf(OMRPORT_FROM_J9PORT(privatePortLibrary), param1, ## __VA_ARGS__)
 #define j9filestream_sync(param1) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_sync(OMRPORT_FROM_J9PORT(privatePortLibrary), param1)
 #define j9filestream_setbuffer(param1, param2, param3, param4) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_setbuffer(OMRPORT_FROM_J9PORT(privatePortLibrary), param1, param2, param3, param4)
 #define j9filestream_fdopen(param1, param2) OMRPORT_FROM_J9PORT(privatePortLibrary)->filestream_fdopen(OMRPORT_FROM_J9PORT(privatePortLibrary), param1, param2)

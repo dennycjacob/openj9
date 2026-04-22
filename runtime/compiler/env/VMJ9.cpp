@@ -2651,6 +2651,13 @@ bool TR_J9VMBase::isClassArray(TR_OpaqueClassBlock *klass)
     return J9ROMCLASS_IS_ARRAY(TR::Compiler->cls.romClassOf(klass)) ? true : false;
 }
 
+bool TR_J9VMBase::isClassMixed(TR_OpaqueClassBlock *ramClass)
+{
+    // Copied from the macro definition of J9CLASS_IS_MIXED in j9.h
+    return (((getClassDepthAndFlagsValue(ramClass) >> J9AccClassRAMShapeShift) & OBJECT_HEADER_SHAPE_MASK)
+        == OBJECT_HEADER_SHAPE_MIXED);
+}
+
 char *TR_J9VMBase::getClassNameChars(TR_OpaqueClassBlock *ramClass, int32_t &length)
 {
     return utf8Data(J9ROMCLASS_CLASSNAME(TR::Compiler->cls.romClassOf(ramClass)), length);
@@ -6475,6 +6482,11 @@ TR_OpaqueClassBlock *TR_J9VM::getComponentClassFromArrayClass(TR_OpaqueClassBloc
 TR_OpaqueClassBlock *TR_J9VM::getArrayClassFromComponentClass(TR_OpaqueClassBlock *componentClass)
 {
     return convertClassPtrToClassOffset(TR::Compiler->cls.convertClassOffsetToClassPtr(componentClass)->arrayClass);
+}
+
+UDATA TR_J9VM::getArityFromArrayClass(TR_OpaqueClassBlock *arrayClass)
+{
+    return ((J9ArrayClass *)TR::Compiler->cls.convertClassOffsetToClassPtr(arrayClass))->arity;
 }
 
 TR_OpaqueClassBlock *TR_J9VM::getNullRestrictedArrayClassFromComponentClass(TR_OpaqueClassBlock *componentClass)

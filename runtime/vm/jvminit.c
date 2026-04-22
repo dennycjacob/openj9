@@ -167,7 +167,7 @@ typedef struct {
 
 #define FUNCTION_VM_INIT "VMInitStages"
 #define FUNCTION_THREAD_INIT "threadInitStages"
-#define FUNCTION_ZERO_INIT	"zeroInitStages"
+#define FUNCTION_ZERO_INIT "zeroInitStages"
 
 static const struct J9VMIgnoredOption ignoredOptionTable[] = {
 	{ IGNORE_ME_STRING, EXACT_MATCH },
@@ -284,7 +284,9 @@ static IDATA registerVMCmdLineMappings (J9JavaVM* vm);
 static void checkDllInfo (void* dllLoadInfo, void* userDataTemp);
 static UDATA initializeVTableScratch(J9JavaVM* vm);
 static jint initializeDDR (J9JavaVM * vm);
+#if defined(J9VM_THR_ASYNC_NAME_UPDATE)
 static void setThreadNameAsyncHandler(J9VMThread *currentThread, IDATA handlerKey, void *userData);
+#endif /* defined(J9VM_THR_ASYNC_NAME_UPDATE) */
 #if defined(J9VM_INTERP_CUSTOM_SPIN_OPTIONS)
 static void cleanCustomSpinOptions(void *element, void *userData);
 #endif /* J9VM_INTERP_CUSTOM_SPIN_OPTIONS */
@@ -628,7 +630,6 @@ cleanCustomSpinOptions(void *element, void *userData)
 	j9mem_free_memory((char *)option->className);
 }
 #endif /* J9VM_INTERP_CUSTOM_SPIN_OPTIONS */
-
 
 #if defined(J9VM_OPT_JITSERVER)
 BOOLEAN
@@ -1382,7 +1383,7 @@ static IDATA vfprintfHook_file_write_text(struct OMRPortLibrary *portLibrary, ID
 		return 0;
 	}
 
-	return	portLibrary_file_write_text(portLibrary, fd, buf, nbytes);
+	return portLibrary_file_write_text(portLibrary, fd, buf, nbytes);
 }
 
 /* Run using a pool_do, this method loads all libraries that match the flags given. */
@@ -1503,28 +1504,27 @@ initializeDllLoadTable(J9PortLibrary *portLibrary, J9VMInitArgs* j9vm_args, UDAT
 	if (NULL == createLoadInfo(portLibrary, returnVal, FUNCTION_THREAD_INIT, NOT_A_LIBRARY, (void*)&threadInitStages, verboseFlags))
 		goto _error;
 
-
 	/* Search for Xrun libraries and add them to the table. Searches right to left and ignores duplicates. */
 	for (i = (j9vm_args->actualVMArgs->nOptions - 1); i >= 0 ; i--) {
-		testString = getOptionString(j9vm_args, i);				/* may return mapped value */
+		testString = getOptionString(j9vm_args, i); /* may return mapped value */
 		if (strstr(testString, VMOPT_XRUN) == testString) {
 			/* No need to scan for -Xrunjdwp as a special case. We should never see that option directly as it is either mapped or translated. */
 			memset(dllNameBuffer, 0, SMALL_STRING_BUF_SIZE);
 			strncpy(dllNameBuffer, testString + strlen(VMOPT_XRUN), (SMALL_STRING_BUF_SIZE - 1));
-			if (0 != (options = strchr(dllNameBuffer, ':'))) {											/* get the name and remove the options */
+			if (0 != (options = strchr(dllNameBuffer, ':'))) { /* get the name and remove the options */
 				*options = '\0';
 			}
-			if (NULL != findDllLoadInfo(returnVal, dllNameBuffer)) {								/* look for duplicate Xrun */
+			if (NULL != findDllLoadInfo(returnVal, dllNameBuffer)) { /* look for duplicate Xrun */
 				continue;
 			}
 			newEntry = createLoadInfo(portLibrary, returnVal, dllNameBuffer, (LOAD_BY_DEFAULT | XRUN_LIBRARY | NO_J9VMDLLMAIN | FATAL_NO_DLL), NULL, verboseFlags);
 			if (NULL != newEntry) {
-				if (OPTION_OK != optionValueOperations(PORTLIB, j9vm_args, i, GET_OPTION, &options, 0, ':', 0, NULL)) {				/* knows how to deal with mapped options */
+				if (OPTION_OK != optionValueOperations(PORTLIB, j9vm_args, i, GET_OPTION, &options, 0, ':', 0, NULL)) { /* knows how to deal with mapped options */
 					goto _error;
 				}
-				newEntry->reserved = "";								/* Libraries don't like NULL options */
+				newEntry->reserved = ""; /* Libraries don't like NULL options */
 				if (NULL != options)
-					newEntry->reserved = (void*)options;		/* Store any options in reserved */
+					newEntry->reserved = (void*)options; /* Store any options in reserved */
 			} else {
 				goto _error;
 			}
@@ -1820,8 +1820,8 @@ _error:
 /**
  * Create and initialize modules path entries.
  * Currently JVM searches system modules at following locations:
- * 	<JAVA_HOME>/lib/modules - should be a jimage file
- * 	<JAVA-HOME>/modules - should be a directory containing modules in exploded form
+ *   <JAVA_HOME>/lib/modules - should be a jimage file
+ *   <JAVA-HOME>/modules - should be a directory containing modules in exploded form
  *
  * @param [in] javaVM A pointer to the J9JavaVM.
  * @param [in] javaHomeValue The java.home path.
@@ -2413,7 +2413,7 @@ VMInitStages(J9JavaVM *vm, IDATA stage, void* reserved)
 							goto _memParseError;
 						}
 					}
-					piConfig->sharedClassReadWriteBytes = -1;					/* -1 == proportion of cache size */
+					piConfig->sharedClassReadWriteBytes = -1; /* -1 == proportion of cache size */
 					vm->sharedClassPreinitConfig = piConfig;
 
 					if (J9_ARE_ANY_BITS_SET(vm->extendedRuntimeFlags2, J9_EXTENDED_RUNTIME2_ENABLE_AOT)) {
@@ -2461,8 +2461,6 @@ VMInitStages(J9JavaVM *vm, IDATA stage, void* reserved)
 				vm->runtimeFlags |= J9_RUNTIME_AGGRESSIVE;
 			}
 			processCompressionOptions(vm);
-
-
 
 			if (0 != initializeHiddenInstanceFieldsList(vm)) {
 				goto _error;
@@ -3265,7 +3263,7 @@ VMInitStages(J9JavaVM *vm, IDATA stage, void* reserved)
 		case AGENTS_STARTED:
 			/* Do the -Xrun options - these have to happen before ABOUT_TO_BOOTSTRAP hook below */
 			if (JNI_OK != initializeXruns(vm)) {
-				return J9VMDLLMAIN_SILENT_EXIT_VM;			/* We have already complained about the Xrun failure, so no need to say "VMInitStages failed" */
+				return J9VMDLLMAIN_SILENT_EXIT_VM; /* We have already complained about the Xrun failure, so no need to say "VMInitStages failed" */
 			}
 			break;
 
@@ -3338,7 +3336,6 @@ VMInitStages(J9JavaVM *vm, IDATA stage, void* reserved)
 	_error :
 		return J9VMDLLMAIN_FAILED;
 }
-
 
 /* Run after all command-line args should have been consumed. Returns TRUE or FALSE. */
 
@@ -3480,7 +3477,6 @@ checkDllInfo(void* dllLoadInfo, void* userDataTemp)
 	}
 }
 
-
 /* This method consumes args which cannot be consumed by any libraries.
 	Eg. -Xint - the JIT library is not loaded and therefore cannot consume the option.
 	Do not consume any arguments here unless absolutely necessary. */
@@ -3550,9 +3546,6 @@ consumeVMArgs(J9JavaVM* vm, J9VMInitArgs* j9vm_args)
 	}
 }
 
-
-
-
 /*
  * Use this method to stop or force certain libraries to load by default.
  * This is run after the DLL table is created and gives an opportunity for the VM to "whack" the table,
@@ -3609,7 +3602,6 @@ modifyDllLoadTable(J9JavaVM * vm, J9Pool* loadTable, J9VMInitArgs* j9vm_args)
 	xnolinenumbers = (findArgInVMArgs( PORTLIB, j9vm_args, EXACT_MATCH, VMOPT_XNOLINENUMBERS, NULL, FALSE) >= 0);
 	xshareclasses = ((xshareclassesIndex = findArgInVMArgs( PORTLIB, j9vm_args, OPTIONAL_LIST_MATCH, VMOPT_XSHARECLASSES, NULL, FALSE))>=0);
 
-
 	xdumpIndex = findArgInVMArgs( PORTLIB, j9vm_args, OPTIONAL_LIST_MATCH, VMOPT_XDUMP, NULL, FALSE);
 	xdumpnoneIndex = findArgInVMArgs( PORTLIB, j9vm_args, EXACT_MATCH, VMOPT_XDUMP_NONE, NULL, FALSE);
 
@@ -3635,8 +3627,8 @@ modifyDllLoadTable(J9JavaVM * vm, J9Pool* loadTable, J9VMInitArgs* j9vm_args)
 	 * -Xint overrides everything.
 	 */
 	xint = xjit = xnojit = xnoaot = xaot = FALSE;
-	for (i=(vm_args->nOptions - 1); i>=0 ; i--) {
-		testString = getOptionString(j9vm_args, i);				/* may return mapped value */
+	for (i = (vm_args->nOptions - 1); i >= 0; i--) {
+		testString = getOptionString(j9vm_args, i); /* may return mapped value */
 
 #if defined(J9VM_OPT_JVMTI)
 		if ((strstr(testString, VMOPT_AGENTLIB_COLON)==testString) || (strstr(testString, VMOPT_AGENTPATH_COLON)==testString)) {
@@ -3839,7 +3831,7 @@ modifyDllLoadTable(J9JavaVM * vm, J9Pool* loadTable, J9VMInitArgs* j9vm_args)
 
 	if (xverify) {
 		ADD_FLAG_AT_INDEX( ARG_REQUIRES_LIBRARY, xverifyIndex );
-		optionValueOperations(PORTLIB, j9vm_args, xverifyIndex, GET_OPTION, &optionValue, 0, ':', 0, NULL);			/* get option value for xverify: */
+		optionValueOperations(PORTLIB, j9vm_args, xverifyIndex, GET_OPTION, &optionValue, 0, ':', 0, NULL); /* get option value for xverify: */
 	} else {
 		optionValue = NULL;
 	}
@@ -3869,7 +3861,7 @@ modifyDllLoadTable(J9JavaVM * vm, J9Pool* loadTable, J9VMInitArgs* j9vm_args)
 
 #if defined(J9VM_INTERP_VERBOSE)
 	if ( verbose ) {
-		optionValueOperations(PORTLIB, j9vm_args, verboseIndex, GET_OPTION, &optionValue, 0, ':', 0, NULL);			/* get option value for verbose: */
+		optionValueOperations(PORTLIB, j9vm_args, verboseIndex, GET_OPTION, &optionValue, 0, ':', 0, NULL); /* get option value for verbose: */
 		if ( !(optionValue!=NULL && strcmp(optionValue, OPT_NONE)==0) ) {
 			ADD_FLAG_AT_INDEX( ARG_REQUIRES_LIBRARY, verboseIndex );
 			entry = getVerboseDllLoadInfo(vm);
@@ -3968,7 +3960,6 @@ modifyDllLoadTable(J9JavaVM * vm, J9Pool* loadTable, J9VMInitArgs* j9vm_args)
 	JVMINIT_VERBOSE_INIT_TRACE_WORKING_SET(vm);
 	return rc;
 }
-
 
 /* Process VM args that are order-dependent */
 static jint
@@ -4666,7 +4657,10 @@ processVMArgsFromFirstToLast(J9JavaVM * vm)
 		IDATA jfrOptionIndex = FIND_AND_CONSUME_VMARG(STARTSWITH_MATCH, VMOPT_XXSTARTOPENJ9EXPERIMENTALFLIGHTRECORDING, NULL);
 		if (0 <= jfrOptionIndex) {
 			char *jfrOptionBuffer = NULL;
+#if JAVA_SPEC_VERSION == 17
+			/* TODO Temporarily limit this to JDK17. */
 			vm->extendedRuntimeFlags3 |= J9_EXTENDED_RUNTIME3_JFR_V2_SUPPORT;
+#endif /* JAVA_SPEC_VERSION == 17 */
 			if (0 <= FIND_ARG_IN_VMARGS(STARTSWITH_MATCH, VMOPT_XXSTARTOPENJ9EXPERIMENTALFLIGHTRECORDING_EQUALS, NULL)) {
 				GET_OPTION_VALUE(jfrOptionIndex, '=', &jfrOptionBuffer);
 			} else if (0 <= FIND_ARG_IN_VMARGS(STARTSWITH_MATCH, VMOPT_XXSTARTOPENJ9EXPERIMENTALFLIGHTRECORDING_COLON, NULL)) {
@@ -4753,7 +4747,6 @@ processVMArgsFromFirstToLast(J9JavaVM * vm)
 	return JNI_OK;
 }
 
-
 /* Called for each stage. Runs J9VMDllMain for every library in the table. */
 
 static jint
@@ -4789,7 +4782,6 @@ runInitializationStage(J9JavaVM* vm, IDATA stage)
 
 	return checkPostStage(vm, stage);
 }
-
 
 /* Run from a pool_do for each library. Invokes the J9VMDllMain method.
 	Errors are reported in the entry->fatalErrorStr. */
@@ -4858,10 +4850,6 @@ runJ9VMDllMain(void* dllLoadInfo, void* userDataTemp)
 	}
 }
 
-
-
-
-
 /* Loads libraries based on flags. */
 
 static jint
@@ -4880,17 +4868,15 @@ runLoadStage(J9JavaVM *vm, IDATA flags)
 	return checkPostStage(vm, LOAD_STAGE);
 }
 
-
-
 /**
- * \brief	Run the specified shutdown stage with JVMTI first in the list
+ * \brief Run the specified shutdown stage with JVMTI first in the list
  *
  * @param[in] vm            VM Structure
  * @param[in] userData      RunDllMainData structure describing the stage and filter flags
  * @return none
  *
- *	Run the specified shutdown stage, with JVMTI first in the list. This is done mainly to avoid
- *  the JIT going away before TI can deallocate things via vm->jitConfig while freeing environments.
+ * Run the specified shutdown stage, with JVMTI first in the list. This is done mainly to avoid
+ * the JIT going away before TI can deallocate things via vm->jitConfig while freeing environments.
  */
 static void
 runShutdownStageJvmtiFirst(J9JavaVM * vm, RunDllMainData * userData)
@@ -4898,7 +4884,6 @@ runShutdownStageJvmtiFirst(J9JavaVM * vm, RunDllMainData * userData)
 	J9VMDllLoadInfo* jvmtiLoadInfo;
 	void *anElement;
 	pool_state aState;
-
 
 	jvmtiLoadInfo = FIND_DLL_TABLE_ENTRY(J9_JVMTI_DLL_NAME);
 	if (jvmtiLoadInfo) {
@@ -4926,7 +4911,7 @@ runShutdownStage(J9JavaVM* vm, IDATA stage, void* reserved, UDATA filterFlags)
 	userData.vm = vm;
 	userData.stage = stage;
 	userData.reserved = reserved;
-	userData.filterFlags = filterFlags;	/* only run J9VMDllMain for DLL table entries whos flags match ALL filterFlags */
+	userData.filterFlags = filterFlags; /* only run J9VMDllMain for DLL table entries whos flags match ALL filterFlags */
 
 #ifdef J9VM_INTERP_VERBOSE
 	JVMINIT_VERBOSE_INIT_VM_TRACE1(vm, "\nRunning shutdown stage %s...\n", getNameForStage(stage));
@@ -4944,13 +4929,12 @@ runShutdownStage(J9JavaVM* vm, IDATA stage, void* reserved, UDATA filterFlags)
 	pool_do(vm->dllLoadTable, runJ9VMDllMain, &userData);
 #endif
 
-	if (stage==JVM_EXIT_STAGE) {		/* We are exiting - we don't care about shutdown error messages */
+	if (JVM_EXIT_STAGE == stage) { /* We are exiting - we don't care about shutdown error messages */
 		return JNI_OK;
 	} else {
 		return checkPostStage(vm, stage);
 	}
 }
-
 
 /* Runs after each stage. Returns FALSE if an error occurred. */
 
@@ -4971,7 +4955,6 @@ checkPostStage(J9JavaVM* vm, IDATA stage)
 	return userData.success;
 }
 
-
 /* Unloads libraries being forced to unload. */
 
 static jint
@@ -4985,7 +4968,6 @@ runForcedUnloadStage(J9JavaVM *vm)
 	pool_do(vm->dllLoadTable, unloadDLL, &userData);
 	return checkPostStage(vm, UNLOAD_STAGE);
 }
-
 
 /* Run using a pool_do, this method shuts down all libraries that match the flags given. */
 
@@ -5007,7 +4989,6 @@ unloadDLL(void* dllLoadInfo, void* userDataTemp)
 	}
 }
 
-
 /* Marks all -Dfoo=bar java options as NOT_CONSUMABLE.
 	Also walks the ignoredOptionTable and if it sees any of those options in the vm_args and marks them as ignored */
 
@@ -5021,7 +5002,7 @@ registerIgnoredOptions(J9PortLibrary *portLibrary, J9VMInitArgs *j9vm_args)
 	PORT_ACCESS_FROM_PORT(portLibrary);
 
 	for (i = 0; i < j9vm_args->nOptions; i++) {
-		option = getOptionString(j9vm_args, i);				/* may return mapped value */
+		option = getOptionString(j9vm_args, i); /* may return mapped value */
 		if ((strlen(option) > 2) && ('-' == option[0])) {
 			switch (option[1]) {
 				/* Mark all -D options as non-consumable */
@@ -5097,7 +5078,6 @@ setJ9ThreadSchedulingAlgorithm(J9JavaVM *javaVM)
 	return success;
 }
 #endif /* defined(LINUX) && defined(J9VM_GC_REALTIME) */
-
 
 IDATA
 threadInitStages(J9JavaVM* vm, IDATA stage, void* reserved)
@@ -5208,7 +5188,7 @@ threadInitStages(J9JavaVM* vm, IDATA stage, void* reserved)
 				setErrorJ9dll(PORTLIB, loadInfo, "cannot initialize threadNameHandlerKey", FALSE);
 				goto _error;
 			}
-#endif /* J9VM_THR_ASYNC_NAME_UPDATE */
+#endif /* defined(J9VM_THR_ASYNC_NAME_UPDATE) */
 			break;
 		case JCL_INITIALIZED :
 			break;
@@ -5220,7 +5200,6 @@ threadInitStages(J9JavaVM* vm, IDATA stage, void* reserved)
 	_error :
 		return J9VMDLLMAIN_FAILED;
 }
-
 
 IDATA
 zeroInitStages(J9JavaVM* vm, IDATA stage, void* reserved)
@@ -5368,7 +5347,6 @@ zeroInitStages(J9JavaVM* vm, IDATA stage, void* reserved)
 		return J9VMDLLMAIN_FAILED;
 }
 
-
 static void *
 getOptionExtraInfo(J9PortLibrary *portLibrary, J9VMInitArgs* j9vm_args, IDATA match, char* optionName)
 {
@@ -5403,7 +5381,6 @@ runJVMOnLoad(J9JavaVM* vm, J9VMDllLoadInfo* loadInfo, char* options)
 	return FALSE;
 }
 
-
 /* Close all loaded DLLs. All library shutdown code should have been run. */
 
 static void
@@ -5428,7 +5405,6 @@ closeAllDLLs(J9JavaVM* vm)
 	}
 }
 
-
 /* Initializes all Xrun libraries that have been loaded (note: Does not initialize agent Xruns). */
 
 static jint
@@ -5437,25 +5413,23 @@ initializeXruns(J9JavaVM* vm)
 	JVMINIT_VERBOSE_INIT_VM_TRACE(vm, "\nInitializing Xrun libraries:\n");
 
 	if (vm->dllLoadTable) {
-		J9VMDllLoadInfo* entry;
+		J9VMDllLoadInfo *entry = NULL;
 		pool_state aState;
-		char* options;
 
-		entry = (J9VMDllLoadInfo*) pool_startDo(vm->dllLoadTable, &aState);
-		while(entry) {
+		entry = (J9VMDllLoadInfo *)pool_startDo(vm->dllLoadTable, &aState);
+		while (NULL != entry) {
 			if ((entry->loadFlags & (XRUN_LIBRARY | AGENT_XRUN)) == XRUN_LIBRARY) {
-				options = (char*)entry->reserved;				/* reserved is used to store any options for Xruns*/
+				char *options = (char *)entry->reserved; /* reserved is used to store any options for Xruns*/
 				JVMINIT_VERBOSE_INIT_VM_TRACE1(vm, "\tRunning JVM_OnLoad for library %s\n", entry->dllName);
 				if (!runJVMOnLoad(vm, entry, options)) {
 					break;
 				}
 			}
-			entry = (J9VMDllLoadInfo*) pool_nextDo(&aState);
+			entry = (J9VMDllLoadInfo *)pool_nextDo(&aState);
 		}
 	}
 	return checkPostStage(vm, XRUN_INIT_STAGE);
 }
-
 
 /* Runs UnOnload functions for libraries such as Xruns */
 
@@ -5537,12 +5511,11 @@ registerCmdLineMapping(J9JavaVM* vm, char* sov_option, char* j9_option, UDATA ma
 				return RC_FAILED;
 			}
 		}
-	} while (index > 0);	/* If index == 0, this would cause findArgInVMArgs to search from the start again, which would cause an infinite loop */
+	} while (index > 0); /* If index == 0, this would cause findArgInVMArgs to search from the start again, which would cause an infinite loop */
 
 	return 0;
 }
 #endif /* J9VM_OPT_SIDECAR */
-
 
 #if (defined(J9VM_OPT_SIDECAR))
 /* Registers j9 command-line args that map to sovereign/other command-line args
@@ -5553,8 +5526,8 @@ static IDATA
 registerVMCmdLineMappings(J9JavaVM* vm)
 {
 #if JAVA_SPEC_VERSION < 21
-	char jitOpt[SMALL_STRING_BUF_SIZE];				/* Plenty big enough */
-	char* changeCursor;
+	char jitOpt[SMALL_STRING_BUF_SIZE]; /* Plenty big enough */
+	char *changeCursor = NULL;
 	IDATA bufLeft = 0;
 
 	/* Allow a single string -Djava.compiler=<value> to have different values */
@@ -5581,7 +5554,7 @@ registerVMCmdLineMappings(J9JavaVM* vm)
 	if (registerCmdLineMapping(vm, jitOpt, VMOPT_XJIT, EXACT_MAP_NO_OPTIONS) == RC_FAILED) {
 		return RC_FAILED;
 	}
-	if (registerCmdLineMapping(vm, SYSPROP_DJAVA_COMPILER_EQUALS, VMOPT_XINT, STARTSWITH_MAP_NO_OPTIONS) == RC_FAILED) {				/* any other -Djava.compiler= found is mapped to -Xint */
+	if (registerCmdLineMapping(vm, SYSPROP_DJAVA_COMPILER_EQUALS, VMOPT_XINT, STARTSWITH_MAP_NO_OPTIONS) == RC_FAILED) { /* any other -Djava.compiler= found is mapped to -Xint */
 		return RC_FAILED;
 	}
 #endif /* JAVA_SPEC_VERSION < 21 */
@@ -5677,7 +5650,6 @@ registerVMCmdLineMappings(J9JavaVM* vm)
 	return 0;
 }
 #endif /* J9VM_OPT_SIDECAR */
-
 
 #ifdef JVMINIT_UNIT_TEST
 static void
@@ -6041,7 +6013,7 @@ testFindArgs(J9JavaVM* vm)
 	TEST_INT(intResult, 1);
 	intResult = FIND_ARG_IN_VMARGS(STARTSWITH_MATCH, "-Xfooj92", "hello");
 	TEST_INT(intResult, 2);
-	intResult = FIND_ARG_IN_VMARGS(STARTSWITH_MATCH, "-Xfooj92", "wobble");			/* this is not considered a value as we're mapping 2 colons to 1 */
+	intResult = FIND_ARG_IN_VMARGS(STARTSWITH_MATCH, "-Xfooj92", "wobble"); /* this is not considered a value as we're mapping 2 colons to 1 */
 	TEST_INT(intResult, -1);
 	REMOVE_MAPPING(2);
 	SET_TO(2, "");
@@ -6098,7 +6070,6 @@ testFindArgs(J9JavaVM* vm)
 
 	printf((failed==NULL) ? "\n\nTESTS PASSED\n" : "\n\nTESTS FAILED\n");
 }
-
 
 static void
 testOptionValueOps(J9JavaVM* vm)
@@ -6175,7 +6146,7 @@ testOptionValueOps(J9JavaVM* vm)
 #ifdef J9VM_OPT_SIDECAR
 	TEST_INT(returnVal, OPTION_ERROR);
 #else
-	TEST_INT(returnVal, OPTION_OK);			/* For non-sidecar, GET_COMPOUND is not supported, so it does same as COPY_OPTION */
+	TEST_INT(returnVal, OPTION_OK); /* For non-sidecar, GET_COMPOUND is not supported, so it does same as COPY_OPTION */
 #endif
 	IS_EMPTY_STRING(copyBufferPtr);
 
@@ -6369,7 +6340,7 @@ testOptionValueOps(J9JavaVM* vm)
 	SET_MAP_TO(1, "-Xfooj9:wobble", "-Xfoo:wibble", EXACT_MAP_NO_OPTIONS);
 	returnVal = GET_OPTION_VALUE(1, ':', &result);
 	TEST_INT(returnVal, OPTION_OK);
-	COMPARE(result, "wobble");				/* With exact map, we don't want the sov option value, we actually want the j9 option value */
+	COMPARE(result, "wobble"); /* With exact map, we don't want the sov option value, we actually want the j9 option value */
 	memset(copyBufferPtr, 0, copyBufSize);
 	returnVal = COPY_OPTION_VALUE(1, ':', &copyBufferPtr, copyBufSize);
 	TEST_INT(returnVal, OPTION_OK);
@@ -6425,7 +6396,7 @@ testOptionValueOps(J9JavaVM* vm)
 	TEST_INT(returnVal, OPTION_OK);
 	COMPARE(copyBufferPtr, "arg2,arg4,arg5");
 
-	vm->vmArgsArray->j9Options[1].fromEnvVar = "anEnvVar";			/* Since this arg is now from an environment variable, it should be included */
+	vm->vmArgsArray->j9Options[1].fromEnvVar = "anEnvVar"; /* Since this arg is now from an environment variable, it should be included */
 	memset(copyBufferPtr, 0, copyBufSize);
 	returnVal = GET_COMPOUND_VALUE(6, ':', &copyBufferPtr, copyBufSize);
 	TEST_INT(returnVal, OPTION_OK);
@@ -6444,7 +6415,7 @@ testOptionValueOps(J9JavaVM* vm)
 
 	memset(copyBufferPtr, 0, copyBufSize);
 	returnVal = GET_COMPOUND_VALUE(3, ':', &copyBufferPtr, copyBufSize);
-	TEST_INT(returnVal, OPTION_ERROR);				/* No : found in option */
+	TEST_INT(returnVal, OPTION_ERROR); /* No : found in option */
 	IS_EMPTY_STRING(copyBufferPtr);
 
 	memset(copyBufferPtr, 0, copyBufSize);
@@ -6553,7 +6524,7 @@ testOptionValueOps(J9JavaVM* vm)
 	SET_TO(1, "-Xfoo8:arg");
 	SET_MAP_TO(1, "-fooj98:bar=", "-Xfoo8:", MAP_WITH_INCLUSIVE_OPTIONS);
 	returnVal = GET_OPTION_VALUE(1, ':', &result);
-	TEST_INT(returnVal, OPTION_ERROR);					/* COPY_OPTION_VALUE should be used */
+	TEST_INT(returnVal, OPTION_ERROR); /* COPY_OPTION_VALUE should be used */
 	IS_NULL(result);
 	memset(copyBufferPtr, 0, copyBufSize);
 	returnVal = COPY_OPTION_VALUE(1, ':', &copyBufferPtr, copyBufSize);
@@ -6707,7 +6678,7 @@ testOptionValueOps(J9JavaVM* vm)
 	TEST_INT(uResult, 0);
 	TEST_INT(intResult, OPTION_MALFORMED);
 
-	SET_TO(1, "-Xfob4294967295");			/* (2^32 - 1) */
+	SET_TO(1, "-Xfob4294967295"); /* (2^32 - 1) */
 	optName = "-Xfob";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
 #if defined(J9VM_ENV_DATA64)
@@ -6718,7 +6689,7 @@ testOptionValueOps(J9JavaVM* vm)
 	TEST_INT(intResult, OPTION_OK);
 #endif /* defined(J9VM_ENV_DATA64) */
 
-	SET_TO(1, "-Xfob9223372036854775807");			/* (2^63 - 1) */
+	SET_TO(1, "-Xfob9223372036854775807"); /* (2^63 - 1) */
 	optName = "-Xfob";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
 #if defined(J9VM_ENV_DATA64)
@@ -6729,7 +6700,7 @@ testOptionValueOps(J9JavaVM* vm)
 	TEST_INT(intResult, OPTION_MALFORMED);
 #endif /* defined(J9VM_ENV_DATA64) */
 
-	SET_TO(1, "-Xfob9223372036854775809");			/* (2^63 + 1) */
+	SET_TO(1, "-Xfob9223372036854775809"); /* (2^63 + 1) */
 	optName = "-Xfob";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
 #if defined(J9VM_ENV_DATA64)
@@ -6740,7 +6711,7 @@ testOptionValueOps(J9JavaVM* vm)
 	TEST_INT(intResult, OPTION_MALFORMED);
 #endif /* defined(J9VM_ENV_DATA64) */
 
-	SET_TO(1, "-Xfoc4294967280");			/* 0xfffffff0 */
+	SET_TO(1, "-Xfoc4294967280"); /* 0xfffffff0 */
 	optName = "-Xfoc";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
 	TEST_INT(uResult, 0xfffffff0);
@@ -6777,7 +6748,7 @@ testOptionValueOps(J9JavaVM* vm)
 	TEST_INT(intResult, OPTION_OK);
 
 #if defined(J9VM_ENV_DATA64)
-	SET_TO(1, "-Xfog16777215T");			/* (2^24-1)*2^40 */
+	SET_TO(1, "-Xfog16777215T"); /* (2^24-1)*2^40 */
 	optName = "-Xfog";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
 	TEST_INT(uResult, (16777215UL*1024UL*1024UL*1024UL*1024UL));
@@ -6789,16 +6760,16 @@ testOptionValueOps(J9JavaVM* vm)
 	TEST_INT(uResult, (1024*1024*1024*1024L));
 	TEST_INT(intResult, OPTION_OK);
 
-	SET_TO(1, "-Xfoi16777216T");			/* 2^64 */
+	SET_TO(1, "-Xfoi16777216T"); /* 2^64 */
 	optName = "-Xfoi";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
 	TEST_INT(intResult, OPTION_OVERFLOW);
 
-	SET_TO(1, "-Xfoj16777216t");			/* 2^64 */
+	SET_TO(1, "-Xfoj16777216t"); /* 2^64 */
 	optName = "-Xfoj";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
 	TEST_INT(intResult, OPTION_OVERFLOW);
-#else	/* defined(J9VM_ENV_DATA64) */
+#else /* defined(J9VM_ENV_DATA64) */
 	SET_TO(1, "-Xfog1T");
 	optName = "-Xfog";
 	intResult = GET_MEMORY_VALUE(1, optName, uResult);
@@ -6967,9 +6938,7 @@ testOptionValueOps(J9JavaVM* vm)
 	printf("%s", (failed==NULL) ? "\n\nTESTS PASSED\n" : "\n\nTESTS FAILED\n");
 }
 
-
 #endif
-
 
 #if defined(J9VM_OPT_SIDECAR) && (JAVA_SPEC_VERSION < 21)
 /* Whine about -Djava.compiler if the option is not used correctly */
@@ -6998,15 +6967,14 @@ checkDjavacompiler(J9PortLibrary *portLibrary, J9VMInitArgs* j9vm_args)
 }
 #endif /* defined(J9VM_OPT_SIDECAR) && (JAVA_SPEC_VERSION < 21) */
 
-
 static IDATA
 setMemoryOptionToOptElse(J9JavaVM* vm, UDATA* thingToSet, char* optionName, UDATA defaultValue, UDATA doConsumeArg)
 {
-	IDATA index, status;
-	UDATA newValue;
+	IDATA index = 0;
+	UDATA newValue = 0;
 	PORT_ACCESS_FROM_JAVAVM(vm);
 	if ((index = findArgInVMArgs( PORTLIB, vm->vmArgsArray, EXACT_MEMORY_MATCH, optionName, NULL, doConsumeArg)) >= 0) {
-		status = optionValueOperations(PORTLIB, vm->vmArgsArray, index, GET_MEM_VALUE, &optionName, 0, 0, 0, &newValue);
+		IDATA status = optionValueOperations(PORTLIB, vm->vmArgsArray, index, GET_MEM_VALUE, &optionName, 0, 0, 0, &newValue);
 		if (status == OPTION_OK) {
 			*thingToSet = newValue;
 		} else {
@@ -7021,11 +6989,11 @@ setMemoryOptionToOptElse(J9JavaVM* vm, UDATA* thingToSet, char* optionName, UDAT
 static IDATA
 setIntegerValueOptionToOptElse(J9JavaVM* vm, UDATA* thingToSet, char* optionName, UDATA defaultValue, UDATA doConsumeArg)
 {
-	IDATA index, status;
-	UDATA newValue;
+	IDATA index = 0;
+	UDATA newValue = 0;
 	PORT_ACCESS_FROM_JAVAVM(vm);
 	if ((index = findArgInVMArgs( PORTLIB, vm->vmArgsArray, EXACT_MEMORY_MATCH, optionName, NULL, doConsumeArg)) >= 0) {
-		status = optionValueOperations(PORTLIB, vm->vmArgsArray, index, GET_INT_VALUE, &optionName, 0, 0, 0, &newValue);
+		IDATA status = optionValueOperations(PORTLIB, vm->vmArgsArray, index, GET_INT_VALUE, &optionName, 0, 0, 0, &newValue);
 		if (status == OPTION_OK) {
 			*thingToSet = newValue;
 		} else {
@@ -7036,8 +7004,6 @@ setIntegerValueOptionToOptElse(J9JavaVM* vm, UDATA* thingToSet, char* optionName
 	}
 	return OPTION_OK;
 }
-
-
 
 #if (defined(J9VM_OPT_SIDECAR))
 static IDATA
@@ -7090,11 +7056,6 @@ generateMemoryOptionParseError(J9JavaVM* vm, J9VMDllLoadInfo* loadInfo, UDATA er
 	}
 }
 
-
-
-
-
-
 /* This function is a public entry point for calling exit code of loaded DLLs */
 
 void
@@ -7141,7 +7102,6 @@ runExitStages(J9JavaVM* vm, J9VMThread* vmThread)
 		runShutdownStage(vm, JVM_EXIT_STAGE, NULL, 0);
 	}
 }
-
 
 /**
  * PostInit load is used to load or initialize a library after initialization has completed.
@@ -8026,7 +7986,7 @@ protectedInitializeJavaVM(J9PortLibrary* portLibrary, void * userData)
 		omrthread_lib_clear_flags(J9THREAD_LIB_FLAG_ENABLE_CPU_MONITOR);
 	}
 
-	registerIgnoredOptions(PORTLIB, vm->vmArgsArray);				/* Tags -D java options and options in ignoredOptionTable as not consumable */
+	registerIgnoredOptions(PORTLIB, vm->vmArgsArray); /* Tags -D java options and options in ignoredOptionTable as not consumable */
 
 #if !defined(J9VM_INTERP_MINIMAL_JNI)
 	vm->EsJNIFunctions = GLOBAL_TABLE(EsJNIFunctions);
@@ -8202,7 +8162,7 @@ protectedInitializeJavaVM(J9PortLibrary* portLibrary, void * userData)
 		 * is used when a new hot field pool for a classLoader is to be dynamically created.
 		 */
 		if (vm->memoryManagerFunctions->j9gc_hot_reference_field_required(vm)) {
-			vm->hotFieldClassInfoPool = pool_new(sizeof(J9ClassHotFieldsInfo),  0, 0, 0, J9_GET_CALLSITE(), J9MEM_CATEGORY_CLASSES, POOL_FOR_PORT(portLibrary));	/* Create the hot field class pool */
+			vm->hotFieldClassInfoPool = pool_new(sizeof(J9ClassHotFieldsInfo), 0, 0, 0, J9_GET_CALLSITE(), J9MEM_CATEGORY_CLASSES, POOL_FOR_PORT(portLibrary)); /* Create the hot field class pool */
 			if ((NULL == vm->hotFieldClassInfoPool)
 				|| (0 != omrthread_monitor_init_with_name(&vm->hotFieldClassInfoPoolMutex, 0, "hotFieldClassInfoPoolMutex"))
 				|| (0 != omrthread_monitor_init_with_name(&vm->globalHotFieldPoolMutex, 0, "globalHotFieldPoolMutex"))
@@ -8422,7 +8382,6 @@ initializeVTableScratch(J9JavaVM* vm)
 	return JNI_OK;
 }
 
-
 static UDATA
 initializeVprintfHook(J9JavaVM* vm)
 {
@@ -8444,8 +8403,6 @@ initializeVprintfHook(J9JavaVM* vm)
 
 	return JNI_OK;
 }
-
-
 
 #if (defined(J9VM_OPT_SIDECAR))
 static UDATA
@@ -8474,7 +8431,6 @@ initializeJVMExtensionInterface(J9JavaVM* vm)
 }
 
 #endif /* J9VM_OPT_SIDECAR */
-
 
 /**
  * @internal
@@ -8515,7 +8471,6 @@ setSignalOptions(J9JavaVM *vm, J9PortLibrary *portLibrary)
 	if (FIND_AND_CONSUME_VMARG(EXACT_MATCH, VMOPT_XNOSIGINT, NULL) >= 0) {
 		vm->sigFlags |= J9_SIG_NO_SIG_INT;
 	}
-
 
 	argIndex = FIND_AND_CONSUME_VMARG(EXACT_MATCH, VMOPT_XXNOHANDLESIGXFSZ, NULL);
 	argIndex2 = FIND_AND_CONSUME_VMARG(EXACT_MATCH, VMOPT_XXHANDLESIGXFSZ, NULL);
@@ -8691,7 +8646,6 @@ getNameForStage(IDATA stage)
 }
 #endif /* J9VM_INTERP_VERBOSE */
 
-
 #if (defined(J9VM_INTERP_VERBOSE))
 /* Runs after each stage. Returns FALSE if an error occurred. */
 
@@ -8745,7 +8699,6 @@ detectAgentXruns(J9JavaVM* vm)
 	}
 }
 #endif /* J9VM_OPT_JVMTI */
-
 
 #if defined(J9VM_GC_DYNAMIC_CLASS_UNLOADING)
 
@@ -8839,7 +8792,6 @@ freeClassNativeMemory(J9HookInterface** hook, UDATA eventNum, void* eventData, v
 	omrthread_monitor_exit(vm->constRefsMutex);
 #endif /* defined(J9VM_OPT_OPENJDK_METHODHANDLE) */
 }
-
 
 static void
 vmHookAnonClassesUnload(J9HookInterface** hook, UDATA eventNum, void* eventData, void* userData)
@@ -9043,7 +8995,7 @@ initializeDDR(J9JavaVM * vm)
 		j9ddrDatDir = vm->j2seRootDirectory;
 	}
 	if (NULL != j9ddrDatDir) {
-		filename = j9mem_allocate_memory(strlen(j9ddrDatDir) + 1 + sizeof(J9DDR_DAT_FILE), OMRMEM_CATEGORY_VM);	/* +1 for slash, sizeof includes nul char already */
+		filename = j9mem_allocate_memory(strlen(j9ddrDatDir) + 1 + sizeof(J9DDR_DAT_FILE), OMRMEM_CATEGORY_VM); /* +1 for slash, sizeof includes nul char already */
 		if (filename == NULL) {
 			rc = JNI_ENOMEM;
 			goto done;
@@ -9092,7 +9044,6 @@ done:
 	return rc;
 }
 
-
 #ifdef J9VM_ENV_SSE2_SUPPORT_DETECTION
 
 /* Constant taken from JIT */
@@ -9112,7 +9063,6 @@ handleSIGILLForSSE(int signal, struct sigcontext context)
 	osSupportsSSE = FALSE;
 }
 #endif
-
 
 BOOLEAN
 isSSE2SupportedOnX86()
@@ -9237,7 +9187,6 @@ initializeExecutionModel(J9VMThread *currentThread)
 	currentThread->functions = currentThread->javaVM->jniFunctionTable;
 }
 
-
 #if defined(J9VM_THR_ASYNC_NAME_UPDATE)
 
 /**
@@ -9285,7 +9234,7 @@ setThreadNameAsyncHandler(J9VMThread *currentThread, IDATA handlerKey, void *use
 	}
 }
 
-#endif /* J9VM_THR_ASYNC_NAME_UPDATE */
+#endif /* defined(J9VM_THR_ASYNC_NAME_UPDATE) */
 
 static UDATA
 parseGlrConfig(J9JavaVM* jvm, char* options)

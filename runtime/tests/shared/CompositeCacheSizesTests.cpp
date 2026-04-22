@@ -32,17 +32,19 @@ extern "C"
 #define TEST_ERROR -1
 
 #define ERRPRINTF(args) \
-do { \
-	j9tty_printf(PORTLIB,"\t"); \
-	j9tty_printf(PORTLIB,"ERROR: %s",__FILE__); \
-	j9tty_printf(PORTLIB,"(%d)",__LINE__); \
-	j9tty_printf(PORTLIB," %s ",testName); \
-	j9tty_printf(PORTLIB,args); \
-}while(0) \
+	do { \
+		j9tty_printf(PORTLIB, "\t"); \
+		j9tty_printf(PORTLIB, "ERROR: %s", __FILE__); \
+		j9tty_printf(PORTLIB, "(%d)", __LINE__); \
+		j9tty_printf(PORTLIB, " %s ", testName); \
+		j9tty_printf(PORTLIB, args); \
+	} while (0)
 
 static IDATA test1(J9JavaVM* vm);
 static IDATA test2(J9JavaVM* vm);
+#if !defined(AIXPPC)
 static IDATA test3(J9JavaVM* vm);
+#endif /* !defined(AIXPPC) */
 static IDATA test4(J9JavaVM* vm);
 static IDATA test5(J9JavaVM* vm);
 static IDATA test6(J9JavaVM* vm);
@@ -89,8 +91,6 @@ createTestCompositeCache (J9JavaVM* vm, SH_CompositeCacheImpl** cc, J9SharedClas
 	return TEST_PASS;
 }
 
-
-
 IDATA
 testCompositeCacheSizes(J9JavaVM* vm)
 {
@@ -110,7 +110,7 @@ testCompositeCacheSizes(J9JavaVM* vm)
 	/* Exclude test3 from AIX machines because of memory allocation limits on some AIX machines. Fails to allocate big enough memory for this test. */
 #if !defined(AIXPPC)
 	rc |= test3(vm);
-#endif
+#endif /* !defined(AIXPPC) */
 	rc |= test4(vm);
 	rc |= test5(vm);
 	rc |= test6(vm);
@@ -150,7 +150,7 @@ test1(J9JavaVM* vm)
 		retval = TEST_ERROR;
 		goto done;
 	}
-	
+
 	requiredCacheSize = srpHashTable_requiredMemorySize(MAIN_SHARED_TABLE_NODE_COUNT, sizeof(J9SharedInternSRPHashTableEntry), TRUE);
 	piconfig->sharedClassCacheSize = requiredCacheSize;
 	piconfig->sharedClassInternTableNodeCount = MAIN_SHARED_TABLE_NODE_COUNT * 2;
@@ -219,7 +219,7 @@ test2(J9JavaVM* vm)
 		/* Error is captured and printed in createTestCompositeCache */
 		goto done;
 	}
-	
+
 	if (piconfig->sharedClassReadWriteBytes != -1){
 		ERRPRINTF(("Read/write area check failed.\n"));
 		retval = TEST_ERROR;
@@ -248,8 +248,9 @@ test2(J9JavaVM* vm)
 	return retval;
 }
 
+#if !defined(AIXPPC)
 static IDATA
-test3(J9JavaVM* vm)
+test3(J9JavaVM *vm)
 {
 	PORT_ACCESS_FROM_JAVAVM(vm);
 	IDATA retval = TEST_PASS;
@@ -304,6 +305,7 @@ test3(J9JavaVM* vm)
 	j9mem_free_memory(piconfig);
 	return retval;
 }
+#endif /* !defined(AIXPPC) */
 
 static IDATA
 test4(J9JavaVM* vm)
@@ -358,7 +360,7 @@ test4(J9JavaVM* vm)
 		retval = TEST_ERROR;
 		goto done;
 	}
-	
+
 	if ((runtimeFlags & J9SHR_RUNTIMEFLAG_ENABLE_REDUCE_STORE_CONTENTION) == 0) {
 		ERRPRINTF(("Store contention not enabled after first startup\n"));
 		retval = TEST_ERROR;
@@ -381,7 +383,7 @@ test4(J9JavaVM* vm)
 		goto done;
 	}
 	actualCC->commitUpdate(vm->mainThread, false);
-	
+
 	do {
 		itemPtr->dataLen = 200;
 		address = actualCC->allocateBlock(vm->mainThread, itemPtr, SHC_WORDALIGN, 0);
@@ -535,7 +537,6 @@ test6(J9JavaVM* vm)
 	return retval;
 }
 
-
 static IDATA
 test7(J9JavaVM* vm)
 {
@@ -635,7 +636,6 @@ test8(J9JavaVM* vm)
 	j9mem_free_memory(piconfig);
 	return retval;
 }
-
 
 static IDATA
 test9(J9JavaVM* vm)
@@ -828,7 +828,6 @@ test12(J9JavaVM* vm)
 	return retval;
 }
 
-
 static IDATA
 test13(J9JavaVM* vm)
 {
@@ -889,8 +888,7 @@ test14(J9JavaVM* vm)
 	piconfig->sharedClassMaxJITSize = MAIN_CACHE_SIZE-200;
 	piconfig->sharedClassDebugAreaBytes = -1;
 	piconfig->sharedClassSoftMaxBytes = -1;
-	if(0 == ensureCorrectCacheSizes(vm, vm->portLibrary, 0, (UDATA)0, piconfig))
-	{
+	if (0 == ensureCorrectCacheSizes(vm, vm->portLibrary, 0, (UDATA)0, piconfig)) {
 		ERRPRINTF(("Failed to ensure correct sizes for minjit and maxjit.\n"));
 		retval = TEST_ERROR;
 	}
@@ -899,4 +897,3 @@ done:
 	j9mem_free_memory(piconfig);
 	return retval;
 }
-

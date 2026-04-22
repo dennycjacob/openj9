@@ -177,6 +177,7 @@ JIT_PRODUCT_BACKEND_SOURCES+=\
     omr/compiler/optimizer/OMRCFGSimplifier.cpp \
     omr/compiler/optimizer/CompactLocals.cpp \
     omr/compiler/optimizer/ConstRefPrivatization.cpp \
+    omr/compiler/optimizer/ConstRefRematerialization.cpp \
     omr/compiler/optimizer/CopyPropagation.cpp \
     omr/compiler/optimizer/DataFlowAnalysis.cpp \
     omr/compiler/optimizer/DeadStoreElimination.cpp \
@@ -242,6 +243,7 @@ JIT_PRODUCT_BACKEND_SOURCES+=\
     omr/compiler/optimizer/SwitchAnalyzer.cpp \
     omr/compiler/optimizer/TranslateTable.cpp \
     omr/compiler/optimizer/TrivialDeadBlockRemover.cpp \
+    omr/compiler/optimizer/TrivialDeadStoreElimination.cpp \
     omr/compiler/optimizer/UnionBitVectorAnalysis.cpp \
     omr/compiler/optimizer/UnsafeSubexpressionRemover.cpp \
     omr/compiler/optimizer/UseDefInfo.cpp \

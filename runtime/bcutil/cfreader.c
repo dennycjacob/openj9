@@ -2154,7 +2154,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 						errorCode = J9NLS_CFR_ERR_LOCAL_VARIABLE_SIGNATURE_NOT_UTF8__ID;
 						goto _errorFound;
 					}
-					if(j9bcv_checkFieldSignature(&cpBase[value], 0)) {
+					if (j9bcv_checkFieldSignature(&cpBase[value], 0) < 0) {
 						errorCode = J9NLS_CFR_ERR_LOCAL_VARIABLE_SIGNATURE_INVALID__ID;
 						goto _errorFound;
 					}
@@ -2536,6 +2536,12 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 				}
 				if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Utf8)) {
 					errorCode = J9NLS_CFR_ERR_LOADABLEDESCRIPTORS_ENTRY_NOT_UTF8_TYPE__ID;
+					goto _errorFound;
+					break;
+				}
+
+				if (j9bcv_checkFieldSignature(&cpBase[value], 0) < 0) {
+					errorCode = J9NLS_CFR_ERR_LOADABLEDESCRIPTORS_INVALID_SIGNATURE__ID;
 					goto _errorFound;
 					break;
 				}

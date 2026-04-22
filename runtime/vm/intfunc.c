@@ -482,6 +482,8 @@ J9InternalVMFunctions J9InternalFunctions = {
 	tearDownJFR,
 	getTypeIdUTF8,
 	getTypeId,
+	jvmUpcallsEagerByteInstrumentation,
+	jvmUpcallTransformArrayToList,
 #endif /* defined(J9VM_OPT_JFR) */
 #if defined(J9VM_OPT_SNAPSHOTS)
 	initializeSnapshotClassLoaderObject,
@@ -502,4 +504,5 @@ J9InternalVMFunctions J9InternalFunctions = {
 	disclaimClassMemory,
 	totalNumberOfDisclaimableClassMemorySegments,
 	signalNameToValue,
+	internalRunStaticMethod,
 };

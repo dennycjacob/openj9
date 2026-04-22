@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <jni.h>
 #include "j9.h"
+#include "jvm.h"
 #include "VMHelpers.hpp"
 
 extern "C" {
@@ -86,14 +87,14 @@ done:
 }
 
 JNIEXPORT jboolean JNICALL
-JVM_IsAtomicArray(JNIEnv *env, jobject obj)
+JVM_IsAtomicArray(JNIEnv *env, jarray obj)
 {
 	/* J9 doesn't currently support non-atomic arrays. */
 	return JNI_TRUE;
 }
 
 JNIEXPORT jboolean JNICALL
-JVM_IsFlatArray(JNIEnv *env, jobject obj)
+JVM_IsFlatArray(JNIEnv *env, jarray obj)
 {
 	jboolean result = JNI_FALSE;
 	J9VMThread *currentThread = (J9VMThread *)env;
@@ -112,7 +113,7 @@ JVM_IsFlatArray(JNIEnv *env, jobject obj)
 }
 
 JNIEXPORT jboolean JNICALL
-JVM_IsNullRestrictedArray(JNIEnv *env, jobject obj)
+JVM_IsNullRestrictedArray(JNIEnv *env, jarray obj)
 {
 	jboolean result = JNI_FALSE;
 	J9VMThread *currentThread = (J9VMThread *)env;

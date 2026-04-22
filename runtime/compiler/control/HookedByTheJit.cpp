@@ -4490,10 +4490,21 @@ void memoryDisclaimLogic(TR::CompilationInfo *compInfo, uint64_t crtElapsedTime,
     TR_J9VMBase *fej9 = TR_J9VMBase::get(jitConfig, compInfo->getSamplerThread(), TR_J9VMBase::AOT_VM);
     TR_J9SharedCache *sharedCache = fej9->sharedCache();
     if (sharedCache && sharedCache->isDisclaimEnabled()) {
-        // Disclaim if there was a large time interval since the last disclaim
+        // Ensure we don't do it too often
         if (crtElapsedTime > lastSCCDisclaimTime + TR::Options::_minTimeBetweenSCCDisclaims) {
-            disclaimSharedClassCache(sharedCache, crtElapsedTime);
-            lastSCCDisclaimTime = crtElapsedTime;
+            // Disclaim if there were many AOT compilations/loads since the last disclaim
+            // or if there was a large time interval since the last disclaim
+            static uint32_t oldTotalAOT = 0;
+            uint32_t crtTotalAOT = compInfo->getNumAotedMethods() + compInfo->getNumMethodsFromSharedCache();
+            static const char *TR_AOTLoadThresholdForSCCDisclaim = feGetEnv("TR_AOTLoadThresholdForSCCDisclaim");
+            static int32_t aotLoadThresholdForSCCDisclaim
+                = TR_AOTLoadThresholdForSCCDisclaim ? atoi(TR_AOTLoadThresholdForSCCDisclaim) : 300;
+            if (crtTotalAOT > oldTotalAOT + aotLoadThresholdForSCCDisclaim
+                || crtElapsedTime > lastSCCDisclaimTime + 4 * (uint64_t)TR::Options::_minTimeBetweenSCCDisclaims) {
+                disclaimSharedClassCache(sharedCache, crtElapsedTime);
+                lastSCCDisclaimTime = crtElapsedTime;
+                oldTotalAOT = crtTotalAOT;
+            }
         }
     }
 #endif // defined(J9VM_OPT_SHARED_CLASSES) && defined(LINUX)

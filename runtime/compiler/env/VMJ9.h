@@ -950,6 +950,7 @@ public:
 
     virtual bool isClassFinal(TR_OpaqueClassBlock *);
     virtual bool isClassArray(TR_OpaqueClassBlock *);
+    virtual bool isClassMixed(TR_OpaqueClassBlock *);
     virtual bool isFinalFieldPointingAtJ9Class(TR::SymbolReference *symRef, TR::Compilation *comp);
 
     virtual void *getJ2IThunk(char *signatureChars, uint32_t signatureLength, TR::Compilation *comp);
@@ -1761,6 +1762,7 @@ public:
 
     virtual TR_OpaqueClassBlock *getComponentClassFromArrayClass(TR_OpaqueClassBlock *arrayClass);
     virtual TR_OpaqueClassBlock *getArrayClassFromComponentClass(TR_OpaqueClassBlock *componentClass);
+    virtual UDATA getArityFromArrayClass(TR_OpaqueClassBlock *arrayClass);
     /** \brief
      *     Retrieves the nullRestrictedArrayClass from the array component class.
      *

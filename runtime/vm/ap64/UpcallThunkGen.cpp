@@ -97,19 +97,19 @@ copyBackStraight(I_32 *instrArray, I_32 *currIdx, I_32 resSize, I_32 paramOffset
 		instrArray[localIdx++] = STD(gIdx + 5, 4, gIdx * 8);
 	}
 
-        if (resSize & 0x4) {
+	if (resSize & 0x4) {
 		instrArray[localIdx++] = LWZ(5, 3, residueOffset);
 		instrArray[localIdx++] = STW(5, 4, residueOffset);
 		residueOffset += 4;
 	}
 
-        if (resSize & 0x2) {
+	if (resSize & 0x2) {
 		instrArray[localIdx++] = LHZ(5, 3, residueOffset);
 		instrArray[localIdx++] = STH(5, 4, residueOffset);
 		residueOffset += 2;
 	}
 
-        if (resSize & 0x1) {
+	if (resSize & 0x1) {
 		instrArray[localIdx++] = LBZ(5, 3, residueOffset);
 		instrArray[localIdx++] = STB(5, 4, residueOffset);
 	}
@@ -168,19 +168,19 @@ copyBackLoop(I_32 *instrArray, I_32 *currIdx, I_32 resSize, I_32 paramOffset)
 		instrArray[localIdx++] = STD(gIdx + 5, 4, gIdx * 8);
 	}
 
-        if (resSize & 0x4) {
+	if (resSize & 0x4) {
 		instrArray[localIdx++] = LWZ(5, 3, residueOffset);
 		instrArray[localIdx++] = STW(5, 4, residueOffset);
 		residueOffset += 4;
 	}
 
-        if (resSize & 0x2) {
+	if (resSize & 0x2) {
 		instrArray[localIdx++] = LHZ(5, 3, residueOffset);
 		instrArray[localIdx++] = STH(5, 4, residueOffset);
 		residueOffset += 2;
 	}
 
-        if (resSize & 0x1) {
+	if (resSize & 0x1) {
 		instrArray[localIdx++] = LBZ(5, 3, residueOffset);
 		instrArray[localIdx++] = STB(5, 4, residueOffset);
 	}
@@ -218,7 +218,6 @@ createUpcallThunk(J9UpcallMetaData *metaData)
 	/* The index of the return type in the signature array */
 	I_32 lastSigIdx = (I_32)(metaData->nativeFuncSignature->numSigs - 1);
 	I_32 stackSlotCount = 0;
-	I_32 fprCovered = 0;
 	I_32 tempInt = 0;
 	I_32 instructionCount = 0;
 	bool hiddenParameter = false;
@@ -303,7 +302,6 @@ createUpcallThunk(J9UpcallMetaData *metaData)
 			case J9_FFI_UPCALL_SIG_TYPE_DOUBLE:
 			{
 				stackSlotCount += 1;
-				fprCovered += 1;
 
 				/* GPR portion definitely runs out before FPR does */
 				if (stackSlotCount <= 8) {

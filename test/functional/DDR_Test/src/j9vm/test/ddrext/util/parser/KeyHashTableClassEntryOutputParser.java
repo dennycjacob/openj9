@@ -1,5 +1,5 @@
-/*******************************************************************************
- * Copyright IBM Corp. and others 2002
+/*
+ * Copyright IBM Corp. and others 2026
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -18,39 +18,26 @@
  * [2] https://openjdk.org/legal/assembly-exception.html
  *
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0 OR GPL-2.0-only WITH OpenJDK-assembly-exception-1.0
- *******************************************************************************/
-changequote(`[',`]')dnl
-
-#ifndef jvm_generated_h
-#define jvm_generated_h
-
-/** WARNING: Automatically Generated File
- *
- * This file contains automatically generated function prototypes
- * for OpenJDK VM Interface (i.e. JVM_) functions.
- *
- * DO NOT ADD PROTOTYPES MANUALLY, instead modify the table in:
- * redirector/forwarders.m4
- *
- * Generated prototypes for all forwarded functions, see
- * redirector/forwarders.m4 for source data.
  */
+package j9vm.test.ddrext.util.parser;
 
-#include "j9cfg.h"
+import j9vm.test.ddrext.Constants;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/**
+ * This class is used to extract info from !keyhashtableclassentry <address> DDR extension output.
+ */
+public class KeyHashTableClassEntryOutputParser {
+	private static final String FIELDSIGNATURE_RAMCLASS = "* ramClass";
 
-include([helpers.m4])
-dnl (1-name, 2-cc, 3-decorate, 4-ret, 5-args...)
-define([_X],
-[JNIEXPORT $4 ifelse($2,,,$2 )$1(join([, ],mshift(4,$@)));])
+	/**
+	 * This method finds the address of the ramClass field from !keyhashtableclassentry output.
+	 *
+	 * @param keyHashTableClassEntryOutput output of !keyhashtableclassentry <address>
+	 * @return hex address of the J9Class, or null if not found
+	 */
+	public static String getRamClassAddress(String keyHashTableClassEntryOutput)
+	{
+		return ParserUtil.getFieldAddressOrValue(FIELDSIGNATURE_RAMCLASS, Constants.J9CLASS_CMD, keyHashTableClassEntryOutput);
+	}
 
-include([forwarders.m4])dnl
-
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
-
-#endif /* jvm_generated_h */
+}

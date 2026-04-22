@@ -27,6 +27,7 @@
 #include "j9port_generated.h"
 #endif /* defined(J9VM_OPT_SNAPSHOTS) */
 #include "j9protos.h"
+#include "KeyHashTable.h"
 #include "vm_internal.h"
 #include "ut_j9vm.h"
 
@@ -36,13 +37,6 @@
 
 #define ROUNDING_GRANULARITY    4
 #define ROUNDED_BYTE_AMOUNT(number)  (((number) + (ROUNDING_GRANULARITY - 1)) & ~(UDATA)(ROUNDING_GRANULARITY - 1))
-
-typedef union KeyHashTableClassEntry {
-	UDATA tag;
-	J9Class *ramClass;
-	J9PackageIDTableEntry packageID;
-	J9UTF8 *className;
-} KeyHashTableClassEntry;
 
 typedef struct KeyHashTableClassQueryEntry {
 	KeyHashTableClassEntry entry;

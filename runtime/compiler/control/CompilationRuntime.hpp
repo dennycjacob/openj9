@@ -1520,6 +1520,10 @@ public:
 #endif /* defined(J9VM_OPT_JITSERVER) */
     static const uint32_t MAX_DIAGNOSTIC_COMP_THREADS = 1;
 
+    uint32_t getNumAotedMethods() const { return _statNumAotedMethods; }
+
+    uint32_t getNumMethodsFromSharedCache() const { return _statNumMethodsFromSharedCache; }
+
 private:
     enum {
         JITA2N_EXTENDED_DATA_EYE_CATCHER = 0xCCCCCCCC,

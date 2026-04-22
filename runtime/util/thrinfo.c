@@ -462,8 +462,7 @@ getInflatedMonitorState(const J9VMThread *targetThread, const omrthread_t j9self
 
 	if (!j9self) {
 		*vmstate = J9VMTHREAD_STATE_UNKNOWN;
-		
-	} else if (j9state->flags & J9THREAD_FLAG_BLOCKED) {
+	} else if (J9_ARE_ANY_BITS_SET(j9state->flags, J9THREAD_FLAG_BLOCKED)) {
 		/* Check for BLOCKED before WAITING to catch waiting threads that
 		 * have been notified.
 		 */
@@ -473,7 +472,11 @@ getInflatedMonitorState(const J9VMThread *targetThread, const omrthread_t j9self
 			*rawLock = j9state->blocker;
 			*vmstate = J9VMTHREAD_STATE_BLOCKED;
 		}
-	} else if (j9state->flags & J9THREAD_FLAG_WAITING) {
+	}
+	/* j9state->flags could have J9THREAD_FLAG_BLOCKED | J9THREAD_FLAG_WAITING. */
+	if ((J9VMTHREAD_STATE_RUNNING == *vmstate)
+			&& J9_ARE_ANY_BITS_SET(j9state->flags, J9THREAD_FLAG_WAITING)
+	) {
 		/* The blocking object of a waiting thread need not be owned. */
 		if (j9state->owner != j9self) {
 			if (j9state->owner) {
@@ -484,7 +487,7 @@ getInflatedMonitorState(const J9VMThread *targetThread, const omrthread_t j9self
 				*count = 0;
 			}
 			*rawLock = j9state->blocker;
-			if (j9state->flags & J9THREAD_FLAG_TIMER_SET) {
+			if (J9_ARE_ANY_BITS_SET(j9state->flags, J9THREAD_FLAG_TIMER_SET)) {
 				*vmstate = J9VMTHREAD_STATE_WAITING_TIMED;
 			} else {
 				*vmstate = J9VMTHREAD_STATE_WAITING;
@@ -492,7 +495,6 @@ getInflatedMonitorState(const J9VMThread *targetThread, const omrthread_t j9self
 		}
 	}
 }
-
 
 /**
  * Get the inflated monitor corresponding to an object, if it exists.

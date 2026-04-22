@@ -74,6 +74,7 @@ TR_TranslationArtifactManager::TR_TranslationArtifactManager(J9AVLTree *translat
     TR_ASSERT(translationArtifacts, "translationArtifacts must not be null");
     TR_ASSERT(vm, "vm must not be null");
     TR_ASSERT(monitor, "monitor must not be null");
+    vm->jitArtifactMonitor = (omrthread_monitor_t)_monitor->getVMMonitor();
 }
 
 bool TR_TranslationArtifactManager::addCodeCache(TR::CodeCache *codeCache)

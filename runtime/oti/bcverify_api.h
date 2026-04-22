@@ -312,14 +312,12 @@ j9bcv_verifyClassStructure (J9PortLibrary * portLib, J9CfrClassFile * classfile,
 IDATA j9bcv_checkMethodSignature (J9CfrConstantPoolInfo * info, BOOLEAN getSlots);
 
 /**
- * 	Check the validity of a field signature.
- * 	@param info signature
- * 	@param currentIndex starting point of the signature string
- *	@return negative on failure, non-negative on success
- *
+ * Check the validity of a field signature.
+ * @param info signature
+ * @param currentIndex starting point of the signature string
+ * @return 0 on success, negative value on failure
  */
-
-IDATA j9bcv_checkFieldSignature (J9CfrConstantPoolInfo * info, UDATA currentIndex);
+IDATA j9bcv_checkFieldSignature(J9CfrConstantPoolInfo * info, UDATA currentIndex);
 
 /* ---------------- vrfyhelp.c ---------------- */
 

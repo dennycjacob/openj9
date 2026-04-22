@@ -1134,8 +1134,15 @@ void TR_ProfileableCallSite::findSingleProfiledReceiver(ListIterator<TR_ExtraAdd
             // need to be able to store class chains for these methods
             if (comp()->compileRelocatableCode()) {
                 if (tempreceiverClass && comp()->getOption(TR_UseSymbolValidationManager)) {
+                    // Add Profiled Class Validation
                     if (!comp()->getSymbolValidationManager()->addProfiledClassRecord(tempreceiverClass))
                         continue;
+
+                    // Add instanceof relationship
+                    if (!comp()->getSymbolValidationManager()->addClassInstanceOfClassRecord(tempreceiverClass,
+                            callSiteClass, true, true, true))
+                        continue;
+
                     /* call getResolvedMethod again to generate the validation records */
                     TR_ResolvedMethod *target_method = getResolvedMethod(tempreceiverClass);
 

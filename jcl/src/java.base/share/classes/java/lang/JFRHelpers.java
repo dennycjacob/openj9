@@ -25,6 +25,9 @@ package java.lang;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,6 +45,7 @@ final class JFRHelpers {
 	private static Method log;
 	/*[IF JAVA_SPEC_VERSION >= 17]*/
 	private static Method logEvent;
+	private static Method bytesForEagerInstrumentation;
 	/*[ENDIF] JAVA_SPEC_VERSION >= 17 */
 	private static volatile boolean jfrClassesInitialized = false;
 	private static String jfrCMDLineOption = VM.getjfrCMDLineOption();
@@ -252,6 +256,8 @@ final class JFRHelpers {
 
 				/*[IF JAVA_SPEC_VERSION >= 17]*/
 				logEvent = loggerClass.getDeclaredMethod("logEvent", new Class[]{logLeveLClass, String[].class, boolean.class});
+				bytesForEagerInstrumentation = jfrUpCallClass.getDeclaredMethod("bytesForEagerInstrumentation", long.class, boolean.class, Class.class, byte[].class);
+				bytesForEagerInstrumentation.setAccessible(true);
 				/*[ENDIF] JAVA_SPEC_VERSION >= 17 */
 
 				Unsafe.getUnsafe().ensureClassInitialized(jfrjvmClass);
@@ -301,6 +307,20 @@ final class JFRHelpers {
 		}
 	}
 	/*[ENDIF] JAVA_SPEC_VERSION >= 17 */
+
+	/*[IF JAVA_SPEC_VERSION == 17]*/
+	private static byte[] transformClassAndInvokebytesForEagerInstrumentation(long traceId, boolean forceInstrumentation, Class<?> superClass, byte[] oldBytes, boolean addMethods) throws ReflectiveOperationException {
+		oldBytes = JFRClassTransformer.transformClass(oldBytes, addMethods);
+		return (byte[])bytesForEagerInstrumentation.invoke(null, traceId, forceInstrumentation, superClass, oldBytes);
+	}
+
+	private static List<?> transformToList(Object[] array) {
+		if (array == null) {
+			return Collections.emptyList();
+		}
+		return Arrays.asList(array);
+	}
+	/*[ENDIF] JAVA_SPEC_VERSION == 17 */
 
 	private static void initJFRv2() {
 		if (!VM.isJFREnabled()) {

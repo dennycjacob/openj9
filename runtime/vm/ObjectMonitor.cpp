@@ -172,15 +172,18 @@ objectMonitorEnterBlocking(J9VMThread *currentThread)
 		/* Ensure object monitor isn't deflated while we block */
 		omrthread_monitor_t monitor = objectMonitor->monitor;
 		J9VMThread *previousOwner = NULL;
-		omrthread_t previousOMRThreadOwner = ((J9ThreadMonitor *)monitor)->owner;
+		bool contendedEnteredHooked = J9_EVENT_IS_HOOKED(vm->hookInterface, J9HOOK_VM_MONITOR_CONTENDED_ENTERED);
 		VM_AtomicSupport::add(&monitor->pinCount, 1);
 		/* Initialize our wait time to 1ms. Increase it as we have to wait more and more
 		 * using the sequence 1, 4, 16, 64 and then 64 thereafter.
 		 */
 		IDATA waitTime = 1;
-
-		if ((NULL != previousOMRThreadOwner) && !IS_J9_OBJECT_MONITOR_OWNER_DETACHED(previousOMRThreadOwner)) {
-			previousOwner = getVMThreadFromOMRThread(vm, previousOMRThreadOwner);
+		if (contendedEnteredHooked) {
+			omrthread_t previousOMRThreadOwner = ((J9ThreadMonitor *)monitor)->owner;
+			if (!IS_J9_OBJECT_MONITOR_OWNER_DETACHED(previousOMRThreadOwner)) {
+				/* getVMThreadFromOMRThread() performs NULL check of previousOMRThreadOwner */
+				previousOwner = getVMThreadFromOMRThread(vm, previousOMRThreadOwner);
+			}
 		}
 
 		if (J9_EVENT_IS_HOOKED(vm->hookInterface, J9HOOK_VM_MONITOR_CONTENDED_ENTER)) {
@@ -305,7 +308,7 @@ done:
 		/* Clear the SUPPRESS_CONTENDED_EXITS bit in the monitor saying that CONTENDED EXIT can be sent again */
 		((J9ThreadMonitor*)monitor)->flags &= ~(UDATA)J9THREAD_MONITOR_SUPPRESS_CONTENDED_EXIT;
 		VM_AtomicSupport::subtract(&monitor->pinCount, 1);
-		if (J9_EVENT_IS_HOOKED(vm->hookInterface, J9HOOK_VM_MONITOR_CONTENDED_ENTERED)) {
+		if (contendedEnteredHooked) {
 			bool frameBuilt = saveBlockingEnterObject(currentThread);
 			ALWAYS_TRIGGER_J9HOOK_VM_MONITOR_CONTENDED_ENTERED(vm->hookInterface, currentThread, monitor, startTicks, ramClass, previousOwner);
 			restoreBlockingEnterObject(currentThread, frameBuilt);

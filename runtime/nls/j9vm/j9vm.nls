@@ -2570,3 +2570,10 @@ J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.explanation=JNI NewWeakGlobalR
 J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.system_action=The JVM will throw an IdentityException.
 J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.user_response=Do not call NewWeakGlobalRef on value types.
 # END NON-TRANSLATABLE
+
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION=The JVM could not enable %s in the restore option file because -XX:+DebugOnRestore wasn't enabled pre-checkpoint.
+# START NON-TRANSLATABLE
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION.explanation=The JDWP option can't be enabled post-restore because -XX:+DebugOnRestore wasn't enabled pre-checkpoint.
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION.system_action=The JVM will throw a JVMRestoreException.
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION.user_response=Enable -XX:+DebugOnRestore pre-checkpoint.
+# END NON-TRANSLATABLE

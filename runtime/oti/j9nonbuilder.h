@@ -544,6 +544,12 @@ typedef struct J9JFRGCHeapSummary {
 	I_64 heapUsed;
 } J9JFRGCHeapSummary;
 
+typedef struct J9JFRTypeID {
+	jlong id;
+	struct J9UTF8 *className;
+	BOOLEAN free;
+} J9JFRTypeID;
+
 #endif /* defined(J9VM_OPT_JFR) */
 
 /* @ddr_namespace: map_to_type=J9CfrError */
@@ -5050,6 +5056,10 @@ typedef struct J9MemoryManagerFunctions {
 #endif /* !defined(J9VM_ENV_DATA64) */
 	UDATA  ( *j9gc_objaccess_mixedObjectCompareAndSwapInt)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_32 compareValue, U_32 swapValue) ;
 	UDATA  ( *j9gc_objaccess_mixedObjectCompareAndSwapLong)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_64 compareValue, U_64 swapValue) ;
+#if defined(J9VM_OPT_VALHALLA_COMPACT_LAYOUTS)
+	U_8  ( *j9gc_objaccess_mixedObjectCompareAndExchangeByte)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_8 compareValue, U_8 swapValue) ;
+	U_16  ( *j9gc_objaccess_mixedObjectCompareAndExchangeShort)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_16 compareValue, U_16 swapValue) ;
+#endif /* defined(J9VM_OPT_VALHALLA_COMPACT_LAYOUTS) */
 	U_32  ( *j9gc_objaccess_mixedObjectCompareAndExchangeInt)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_32 compareValue, U_32 swapValue) ;
 	U_64  ( *j9gc_objaccess_mixedObjectCompareAndExchangeLong)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_64 compareValue, U_64 swapValue) ;
 	IDATA  ( *j9gc_objaccess_staticReadI32)(struct J9VMThread *vmThread, J9Class *clazz, I_32 *srcSlot, UDATA isVolatile) ;
@@ -5624,8 +5634,10 @@ typedef struct J9InternalVMFunctions {
 	void  (*jfrGarbageCollection)(struct OMR_VMThread *omrVMThread) ;
 	jboolean (*setJFRRecordingFileName)(struct J9JavaVM *vm, char *fileName);
 	void (*tearDownJFR)(struct J9JavaVM *vm);
-	jlong (*getTypeIdUTF8)(struct J9VMThread *currentThread, const struct J9UTF8 *className);
+	jlong (*getTypeIdUTF8)(struct J9VMThread *currentThread, struct J9ClassLoader *classLoader, struct J9UTF8 *className, BOOLEAN freeName);
 	jlong (*getTypeId)(struct J9VMThread *currentThread, struct J9Class *clazz);
+	void (*jvmUpcallsEagerByteInstrumentation)(struct J9VMThread *currentThread, struct J9Class *superClass, U_8 *className, U_16 classNameLength, struct J9ClassLoader *loader, U_8 *classData, UDATA classDataLength, U_8 **newClassData, UDATA *newClassDataLength);
+	j9object_t (*jvmUpcallTransformArrayToList)(struct J9VMThread *currentThread, j9object_t array);
 #endif /* defined(J9VM_OPT_JFR) */
 #if defined(J9VM_OPT_SNAPSHOTS)
 	void (*initializeSnapshotClassLoaderObject)(struct J9JavaVM *javaVM, struct J9ClassLoader *classLoader, j9object_t classLoaderObject);
@@ -5646,6 +5658,7 @@ typedef struct J9InternalVMFunctions {
 	BOOLEAN (*disclaimClassMemory)(struct J9JavaVM *vm, UDATA flags);
 	UDATA (*totalNumberOfDisclaimableClassMemorySegments)(struct J9JavaVM *vm);
 	jint (*signalNameToValue)(const char *signalName);
+	void (JNICALL *internalRunStaticMethod)(struct J9VMThread *currentThread, struct J9Method *method, BOOLEAN returnsObject, UDATA argCount, UDATA *arguments);
 } J9InternalVMFunctions;
 
 /* Jazz 99339: define a new structure to replace JavaVM so as to pass J9NativeLibrary to JVMTIEnv  */
@@ -6151,6 +6164,8 @@ typedef struct JFRState {
 	char *duration;
 	jclass jfrInternalEventClassRef;
 	jclass jfrEventClassRef;
+	J9Method *onRetransformUpcallMethod;
+	J9Method *transformToListMethod;
 } JFRState;
 
 typedef struct J9ReflectFunctionTable {
@@ -6734,6 +6749,7 @@ typedef struct J9JavaVM {
 	/* Protects constRefArrayPool and J9Class.constRefArrays. */
 	omrthread_monitor_t constRefsMutex;
 #endif /* defined(J9VM_OPT_OPENJDK_METHODHANDLE) */
+	omrthread_monitor_t jitArtifactMonitor;
 } J9JavaVM;
 
 #define J9JFR_SAMPLER_STATE_UNINITIALIZED 0

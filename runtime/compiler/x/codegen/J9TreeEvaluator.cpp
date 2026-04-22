@@ -4585,7 +4585,7 @@ static void inlineCheckCastOrInstanceOfFinalArrayCastClass(TR::Node *node, TR_Op
     startLabel->setStartInternalControlFlow();
     fallThruLabel->setEndInternalControlFlow();
 
-    J9Class *castClassLeafJ9Class = ((J9ArrayClass *)clazz)->leafComponentType;
+    J9Class *castClassLeafJ9Class = (J9Class *)cg->fe()->getLeafComponentClassFromArrayClass(clazz);
     TR_OpaqueClassBlock *castClassLeafClass = TR::Compiler->cls.convertClassPtrToClassOffset(castClassLeafJ9Class);
 
     static char *breakOnInlineFinalArrayCastClass = feGetEnv("TR_BreakOnInlineFinalArrayCastClass");
@@ -4864,7 +4864,7 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
     TR::LabelSymbol *oolHelperCallTrampolineLabel = isCheckCast ? generateLabelSymbol(cg) : NULL;
     TR_OutlinedInstructions *outlinedHelperCall = NULL;
 
-    J9Class *castClassLeafJ9Class = ((J9ArrayClass *)clazz)->leafComponentType;
+    J9Class *castClassLeafJ9Class = (J9Class *)fej9->getLeafComponentClassFromArrayClass((TR_OpaqueClassBlock *)clazz);
     TR_OpaqueClassBlock *castClassLeafClass = TR::Compiler->cls.convertClassPtrToClassOffset(castClassLeafJ9Class);
 
     static char *breakOnInlineArrayCastClass = feGetEnv("TR_BreakOnInlineArrayCastClass");
@@ -4960,8 +4960,7 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
     // If the cast class leaf component is not a reference array, the result
     // is not castable. Fall through to update the cache.
     // ----------------------------------------------------------------------
-
-    if (J9CLASS_IS_MIXED(castClassLeafJ9Class)) {
+    if (fej9->isClassMixed((TR_OpaqueClassBlock *)castClassLeafJ9Class)) {
         // The JMP is required on this path to complete the above cache check
         //
         generateLabelInstruction(TR::InstOpCode::JMP4, node, notCastableDoNotCacheLabel, cg);
@@ -4985,8 +4984,8 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
         generateRegMemInstruction(TR::InstOpCode::L8RegMem, node, scratchReg,
             generateX86MemoryReference(objectClassReg, offsetof(J9ArrayClass, arity), cg), cg);
 
-        generateRegImmInstruction(TR::InstOpCode::CMP8RegImm4, node, scratchReg,
-            (int32_t)(((J9ArrayClass *)clazz)->arity), cg);
+        UDATA arity = static_cast<TR_J9VM *>(fej9)->getArityFromArrayClass((TR_OpaqueClassBlock *)clazz);
+        generateRegImmInstruction(TR::InstOpCode::CMP8RegImm4, node, scratchReg, arity, cg);
 
         if (!oolHelperCallTrampolineLabel)
             oolHelperCallTrampolineLabel = generateLabelSymbol(cg);
@@ -4994,7 +4993,7 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
 
 #if defined(J9VM_OPT_VALHALLA_FLATTENABLE_VALUE_TYPES)
         J9Class *castClassJ9Class = TR::Compiler->cls.convertClassOffsetToClassPtr(clazz);
-        if (J9_IS_J9ARRAYCLASS_NULL_RESTRICTED(castClassJ9Class)) {
+        if (TR::Compiler->cls.isArrayNullRestricted(cg->comp(), (TR_OpaqueClassBlock *)castClassJ9Class)) {
             static_assert(J9ClassArrayIsNullRestricted == 0x2000000,
                 "J9ClassArrayIsNullRestricted must be 0x2000000 for simple bit test");
 
@@ -5055,7 +5054,8 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
         // Skip the subclass check if the castClassLeaf is final
         // ----------------------------------------------------------------------
 
-        bool castClassLeafIsInterface = J9ROMCLASS_IS_INTERFACE(castClassLeafJ9Class->romClass);
+        bool castClassLeafIsInterface
+            = J9ROMCLASS_IS_INTERFACE(TR::Compiler->cls.romClassOf((TR_OpaqueClassBlock *)castClassLeafJ9Class));
 
         if (!fej9->isClassFinal(castClassLeafClass)) {
             // ----------------------------------------------------------------------
@@ -5261,7 +5261,7 @@ static void generateInlinedCheckCastOrInstanceOfForArrayClass(TR::Node *node, TR
             inlineCheckCastOrInstanceOfObjectArrayCastClass(node, clazz, isCheckCast, cg);
             return;
         } else {
-            bool isRelocatableCompile = comp->compileRelocatableCode() || comp->isOutOfProcessCompilation();
+            bool isRelocatableCompile = comp->compileRelocatableCode();
 
             if (!isRelocatableCompile && comp->target().is64Bit()) {
                 /**
@@ -5271,9 +5271,7 @@ static void generateInlinedCheckCastOrInstanceOfForArrayClass(TR::Node *node, TR
                  * but is beyond the scope of this initial implementation. The work is tracked
                  * in Issue #23510.
                  */
-                J9Class *castClassLeafJ9Class = ((J9ArrayClass *)clazz)->leafComponentType;
-                TR_OpaqueClassBlock *castClassLeafClass
-                    = TR::Compiler->cls.convertClassPtrToClassOffset(castClassLeafJ9Class);
+                TR_OpaqueClassBlock *castClassLeafClass = fej9->getLeafComponentClassFromArrayClass(clazz);
 
                 if (!disableInlineFinalArrayCastClass && fej9->isClassFinal(castClassLeafClass)) {
                     inlineCheckCastOrInstanceOfFinalArrayCastClass(node, clazz, isCheckCast, cg);

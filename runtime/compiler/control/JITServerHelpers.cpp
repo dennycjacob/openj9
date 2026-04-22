@@ -924,6 +924,7 @@ ClientSessionData::ClassInfo &JITServerHelpers::cacheRemoteROMClass(ClientSessio
     classInfoStruct._classNameIdentifyingLoader = std::get<22>(classInfoTuple);
     classInfoStruct._arrayElementSize = std::get<23>(classInfoTuple);
     classInfoStruct._nullRestrictedArrayClass = std::get<25>(classInfoTuple);
+    classInfoStruct._arity = std::get<26>(classInfoTuple);
 
     auto result = clientSessionData->getROMClassMap().insert({ clazz, classInfoStruct });
 
@@ -983,6 +984,7 @@ JITServerHelpers::ClassInfoTuple JITServerHelpers::packRemoteROMClassInfo(J9Clas
     void *classLoader = fe->getClassLoader((TR_OpaqueClassBlock *)clazz);
     TR_OpaqueClassBlock *hostClass = fe->convertClassPtrToClassOffset(clazz->hostClass);
     TR_OpaqueClassBlock *componentClass = fe->getComponentClassFromArrayClass((TR_OpaqueClassBlock *)clazz);
+    UDATA arity = fe->getArityFromArrayClass((TR_OpaqueClassBlock *)clazz);
     TR_OpaqueClassBlock *arrayClass = fe->getArrayClassFromComponentClass((TR_OpaqueClassBlock *)clazz);
     TR_OpaqueClassBlock *nullRestrictedArrayClass
         = fe->getNullRestrictedArrayClassFromComponentClass((TR_OpaqueClassBlock *)clazz);
@@ -1028,7 +1030,7 @@ JITServerHelpers::ClassInfoTuple JITServerHelpers::packRemoteROMClassInfo(J9Clas
         classDepthAndFlags, classInitialized, byteOffsetToLockword, leafComponentClass, classLoader, hostClass,
         componentClass, arrayClass, totalInstanceSize, clazz->romClass, cp, classFlags,
         classChainOffsetIdentifyingLoader, origROMMethods, classNameIdentifyingLoader, arrayElementSize, romClassHash,
-        nullRestrictedArrayClass);
+        nullRestrictedArrayClass, arity);
 }
 
 J9ROMClass *JITServerHelpers::romClassFromString(const std::string &romClassStr, const std::string &romClassHashStr,
@@ -1196,8 +1198,11 @@ void JITServerHelpers::getROMClassData(const ClientSessionData::ClassInfo &class
         case CLASSINFO_NULLRESTRICTED_ARRAY_CLASS:
             *(TR_OpaqueClassBlock **)data = classInfo._nullRestrictedArrayClass;
             break;
+        case CLASSINFO_ARITY:
+            *(UDATA *)data = classInfo._arity;
+            break;
         default:
-            TR_ASSERT(false, "Class Info not supported %u\n", dataType);
+            TR_ASSERT_FATAL(false, "Class Info not supported %u\n", dataType);
             break;
     }
 }

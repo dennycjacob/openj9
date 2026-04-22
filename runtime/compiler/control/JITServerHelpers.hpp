@@ -54,6 +54,7 @@ public:
         CLASSINFO_CLASS_CHAIN_OFFSET_IDENTIFYING_LOADER,
         CLASSINFO_ARRAY_ELEMENT_SIZE,
         CLASSINFO_NULLRESTRICTED_ARRAY_CLASS,
+        CLASSINFO_ARITY,
     };
 
     // NOTE: when adding new elements to this tuple, add them to the end,
@@ -83,7 +84,8 @@ public:
         std::string, // 22: _classNameIdentifyingLoader
         int32_t, // 23: _arrayElementSize
         std::string, // 24: optional hash of packedROMClass
-        TR_OpaqueClassBlock * // 25: _nullRestrictedArrayClass
+        TR_OpaqueClassBlock *, // 25: _nullRestrictedArrayClass
+        UDATA // 26: _arity
         >;
 
     // Packs a ROMClass to be transferred to the server.

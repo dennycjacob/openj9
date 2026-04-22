@@ -5742,6 +5742,7 @@ hasMemoryScope(J9VMThread *walkThread, j9object_t scope);
 /* ------------------- jfr.cpp ------------------- */
 
 #if defined(J9VM_OPT_JFR)
+
 /**
  * Initialize JFR.
  *
@@ -5871,10 +5872,12 @@ getTypeId(J9VMThread *currentThread, J9Class *clazz);
  * thread safe as it internally acquires a mutex.
  *
  * @param currentThread[in] the current J9VMThread
+ * @param classLoader class loader of JFR event class
  * @param className name of JFR event class
+ * @param freeName if TRUE, the name will be freed after use
  */
 jlong
-getTypeIdUTF8(J9VMThread *currentThread, const J9UTF8 *className);
+getTypeIdUTF8(J9VMThread *currentThread, J9ClassLoader *classLoader, J9UTF8 *className, BOOLEAN freeName);
 
 /**
  * Initialize JFR ID structures
@@ -5891,6 +5894,36 @@ initializeJFRIDs(J9JavaVM *vm);
  */
 void
 shutdownJFRIDs(J9JavaVM *vm);
+
+/**
+ * Call the JFR eager byte instrumentation method to set up the JFR event class. Current exception will
+ * be set if there is a failure.
+ *
+ * @param currentThread[in] the current J9VMThread
+ * @param superClass[in] the superclass of the class
+ * @param className[in] the name of the class
+ * @param classNameLength[in] the length of the class name
+ * @param loader[in] the class loader
+ * @param classData[in] the class data
+ * @param classDataLength[in] the length of the class data
+ * @param newClassData[out] the new class data
+ * @param newClassDataLength[out] the new class data length
+ *
+ */
+void
+jvmUpcallsEagerByteInstrumentation(J9VMThread *currentThread, J9Class *superClass, U_8 *className, U_16 classNameLength, J9ClassLoader *loader, U_8 *classData, UDATA classDataLength, U_8 **newClassData, UDATA *newClassDataLength);
+
+/**
+ * Call the JFR transform array to list method to transform an array to a list. Current exception will
+ * be set if there is a failure.
+ *
+ * @param currentThread[in] the current J9VMThread
+ * @param array[in] the array to transform
+ *
+ * @return the transformed list
+ */
+j9object_t
+jvmUpcallTransformArrayToList(J9VMThread *currentThread, j9object_t array);
 
 #endif /* defined(J9VM_OPT_JFR) */
 

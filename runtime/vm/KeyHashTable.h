@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright IBM Corp. and others 2002
+ * Copyright IBM Corp. and others 2026
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -19,38 +19,17 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0 OR GPL-2.0-only WITH OpenJDK-assembly-exception-1.0
  *******************************************************************************/
-changequote(`[',`]')dnl
 
-#ifndef jvm_generated_h
-#define jvm_generated_h
+#ifndef KEYHHASHTABLE_H_
+#define KEYHHASHTABLE_H_
 
-/** WARNING: Automatically Generated File
- *
- * This file contains automatically generated function prototypes
- * for OpenJDK VM Interface (i.e. JVM_) functions.
- *
- * DO NOT ADD PROTOTYPES MANUALLY, instead modify the table in:
- * redirector/forwarders.m4
- *
- * Generated prototypes for all forwarded functions, see
- * redirector/forwarders.m4 for source data.
- */
+#include "j9nonbuilder.h"
 
-#include "j9cfg.h"
+typedef union KeyHashTableClassEntry {
+	UDATA tag;
+	struct J9Class *ramClass;
+	J9PackageIDTableEntry packageID;
+	struct J9UTF8 *className;
+} KeyHashTableClassEntry;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-include([helpers.m4])
-dnl (1-name, 2-cc, 3-decorate, 4-ret, 5-args...)
-define([_X],
-[JNIEXPORT $4 ifelse($2,,,$2 )$1(join([, ],mshift(4,$@)));])
-
-include([forwarders.m4])dnl
-
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
-
-#endif /* jvm_generated_h */
+#endif /* KEYHHASHTABLE_H_ */

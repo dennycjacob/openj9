@@ -2141,8 +2141,31 @@ criuCheckpointJVMImpl(JNIEnv *env,
 			IDATA ignoreDisabled = FIND_AND_CONSUME_ARG(restoreArgsList, EXACT_MATCH, VMOPT_XXIGNOREUNRECOGNIZEDRESTOREOPTIONSDISABLE, NULL);
 
 			bool dontIgnoreUnsupportedRestoreOptions = (ignoreEnabled < 0) || (ignoreEnabled < ignoreDisabled);
+			bool jdwpFoundButIgnored = false;
 
-			if ((FALSE == checkArgsConsumed(vm, vm->portLibrary, restoreArgsList)) && dontIgnoreUnsupportedRestoreOptions) {
+			if (!isDebugOnRestoreEnabled(vm)) {
+				/* -XX:+DebugOnRestore wasn't enabled pre-checkpoint,
+				 * check if there is a JDWP option in the restore option file.
+				 * If so, print a message and consume it to avoid errors such as:
+				 * JVMJ9VM007E Command-line option unrecognised: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n
+				 */
+				IDATA agentIndex = 0;
+				agentIndex = FIND_AND_CONSUME_ARG_FORWARD(restoreArgsList, STARTSWITH_MATCH, MAPOPT_XRUNJDWP, NULL);
+				if (agentIndex < 0) {
+					agentIndex = FIND_AND_CONSUME_ARG_FORWARD(restoreArgsList, STARTSWITH_MATCH, VMOPT_AGENTLIB_COLON, NULL);
+					if (agentIndex < 0) {
+						agentIndex = FIND_AND_CONSUME_ARG_FORWARD(restoreArgsList, STARTSWITH_MATCH, VMOPT_AGENTPATH_COLON, NULL);
+					}
+				}
+				if (agentIndex >= 0) {
+					JavaVMOption *options = restoreArgsList->actualVMArgs->options;
+					j9nls_printf(PORTLIB, J9NLS_ERROR, J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION, options[agentIndex].optionString);
+					jdwpFoundButIgnored = true;
+				}
+			}
+			if (jdwpFoundButIgnored
+					|| ((FALSE == checkArgsConsumed(vm, vm->portLibrary, restoreArgsList)) && dontIgnoreUnsupportedRestoreOptions)
+			) {
 				currentExceptionClass = vm->checkpointState.criuJVMRestoreExceptionClass;
 				systemReturnCode = 0;
 				nlsMsgFormat = j9nls_lookup_message(J9NLS_DO_NOT_PRINT_MESSAGE_TAG | J9NLS_DO_NOT_APPEND_NEWLINE,
