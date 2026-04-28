@@ -34,24 +34,24 @@
 #include "ModronAssertions.h"
 #include "util_api.h"
 
-jint JNICALL 
-JVM_OnLoad( JavaVM *jvm, char* commandLineOptions, void *reserved ) 
+jint JNICALL
+JVM_OnLoad(JavaVM *jvm, char *commandLineOptions, void *reserved)
 {
 	return JNI_OK;
 }
 
 /**
  * Main entrypoint for GC DLL
- * 
+ *
  * This function is called by the VM multiple times during startup and shutdown -
  * once for each stage. The implementation traps stages GC is interested in and
  * starts up/shuts down the memory manager as appropriate.
- * 
+ *
  * @param stage Stage the VM has reached
  * @return Success/failure
  */
-IDATA 
-J9VMDllMain(J9JavaVM* vm, IDATA stage, void* reserved) 
+IDATA
+J9VMDllMain(J9JavaVM *vm, IDATA stage, void *reserved)
 {
 	IDATA rc = J9VMDLLMAIN_OK;
 	J9VMDllLoadInfo *loadInfo = getGCDllLoadInfo(vm);
@@ -62,7 +62,7 @@ J9VMDllMain(J9JavaVM* vm, IDATA stage, void* reserved)
 			break;
 
 		case ALL_LIBRARIES_LOADED:
-			/* Note: this must happen now, otherwise -verbose:sizes will not work, as verbose 
+			/* Note: this must happen now, otherwise -verbose:sizes will not work, as verbose
 			 * support is initialized during this stage.
 			 */
 			rc = gcInitializeDefaults(vm);
@@ -90,12 +90,22 @@ J9VMDllMain(J9JavaVM* vm, IDATA stage, void* reserved)
 			rc = triggerGCInitialized(vm->mainThread);
 
 			break;
-		
+
 		case ABOUT_TO_BOOTSTRAP :
 			/* Expand heap based on hints stored by previous runs into Shared Cache */
 			gcExpandHeapOnStartup(vm);
+			break;
+
 		case JCL_INITIALIZED :
+			break;
+
 		case LIBRARIES_ONUNLOAD :
+		case JVM_EXIT_STAGE:
+			if (J9_IS_GCCONTAINERHEURISTICS(vm)
+				&& J9_ARE_ANY_BITS_SET(vm->extendedRuntimeFlags2, J9_EXTENDED_RUNTIME2_ENABLE_PORTABLE_SHARED_CACHE)
+			) {
+				j9gc_storeGCHints(vm->mainThread);
+			}
 			break;
 
 		case HEAP_STRUCTURES_FREED :

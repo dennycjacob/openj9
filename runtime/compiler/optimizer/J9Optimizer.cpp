@@ -366,8 +366,8 @@ static const OptimizationStrategy warmStrategyOpts[] = {
     { OMR::loopReduction },
     { OMR::blockShuffling },
 #endif
-    { OMR::localCSE, OMR::IfLoopsAndNotProfiling },
-    { OMR::idiomRecognition, OMR::IfLoopsAndNotProfiling },
+    { OMR::idiomRecognitionGroup, OMR::IfKnownIdiomRecognitionOpportunity },
+    { OMR::cheapIdiomRecognitionGroup, OMR::IfNotKnownIdiomRecognitionOpportunity },
     { OMR::treeSimplification },
     { OMR::redundantGotoElimination, OMR::IfEnabledAndNotJitProfiling },
     { OMR::blockSplitter },

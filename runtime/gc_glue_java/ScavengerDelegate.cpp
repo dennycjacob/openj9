@@ -762,7 +762,21 @@ MM_ScavengerDelegate::switchConcurrentForThread(MM_EnvironmentBase *env)
 
 			uintptr_t sectionCount = ((uintptr_t)top - (uintptr_t)base) / _extensions->getConcurrentScavengerPageSectionSize();
 			uintptr_t startOffsetInBits = ((uintptr_t)base - (uintptr_t)_extensions->getConcurrentScavengerPageStartAddress()) / _extensions->getConcurrentScavengerPageSectionSize();
-			uint64_t bitMask = (((uint64_t)1 << sectionCount) - 1) << (CONCURRENT_SCAVENGER_PAGE_SECTIONS - (sectionCount + startOffsetInBits));
+
+			/* Nursery is split to 64 pages, sectionCount should not exceed 64. */
+			Assert_MM_true(CONCURRENT_SCAVENGER_PAGE_SECTIONS >= sectionCount);
+
+			uint64_t bitMask = 0;
+
+			if (CONCURRENT_SCAVENGER_PAGE_SECTIONS > sectionCount) {
+				bitMask = (((uint64_t)1 << sectionCount) - 1) << (CONCURRENT_SCAVENGER_PAGE_SECTIONS - (sectionCount + startOffsetInBits));
+			} else {
+				/*
+				 * Evacuate can be extended to entire Nursery in the case of Concurrent Scavenger abort.
+				 * In this case all 64 bits should be set.
+				 */
+				bitMask = 0xffffffffffffffff;
+			}
 
 			if (_extensions->isDebugConcurrentScavengerPageAlignment()) {
 				void* nurseryBase = OMR_MIN(base, _extensions->scavenger->getSurvivorBase());

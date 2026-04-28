@@ -1651,6 +1651,7 @@ typedef struct J9SharedClassConfig {
 	void  ( *jvmPhaseChange)(struct J9VMThread *currentThread, UDATA phase);
 	void  (*storeGCHints)(struct J9VMThread* currentThread, UDATA heapSize1, UDATA heapSize2, BOOLEAN forceReplace);
 	IDATA  (*findGCHints)(struct J9VMThread* currentThread, UDATA *heapSize1, UDATA *heapSize2);
+	BOOLEAN (*storedGCHints)(struct J9VMThread *currentThread);
 	void  ( *updateClasspathOpenState)(struct J9JavaVM* vm, struct J9ClassPathEntry** classPathEntries, UDATA entryIndex, UDATA entryCount, BOOLEAN isOpen);
 	void ( *disableSharedClassCacheForCriuRestore)(struct J9JavaVM* vm);
 	struct J9MemorySegment* metadataMemorySegment;

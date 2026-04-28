@@ -197,4 +197,35 @@ public class ValueTypeTestClasses {
 			return l4;
 		}
 	}
+
+	static class IdentityClassForHashCode {
+		int i;
+		IdentityClassForHashCode(int i) {
+			this.i = i;
+		}
+	}
+
+	static value class ValueClassWithIdentityField {
+		int i;
+		IdentityClassForHashCode r;
+		ValueClassWithIdentityField(int i) {
+			this.i = i;
+			this.r = new IdentityClassForHashCode(i);
+		}
+	}
+
+	/* Static array for ValueClassSubArray test */
+	static final int[] intArray = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+	static value class ValueClassSubArray {
+		int startFrom;
+		int endAt;
+		int [] Array;
+
+		ValueClassSubArray(int startFrom, int endAt) {
+			this.startFrom = startFrom;
+			this.endAt = endAt;
+			this.Array = intArray;
+		}
+	}
 }

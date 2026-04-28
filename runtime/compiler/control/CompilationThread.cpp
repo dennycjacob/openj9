@@ -8393,7 +8393,7 @@ TR_MethodMetaData *TR::CompilationInfoPerThreadBase::wrappedCompile(J9PortLibrar
                             if (TR::Compiler->target.cpu.isX86()) {
                                 static char *enableIdiomRecognitionAtWarm = feGetEnv("TR_EnableIdiomRecognitionAtWarm");
                                 if (!enableIdiomRecognitionAtWarm)
-                                    options->setDisabled(OMR::idiomRecognition, true);
+                                    options->setDisabled(OMR::cheapIdiomRecognitionGroup, true);
                             }
                         }
                     }

@@ -690,47 +690,55 @@ gcStartupHeapManagement(J9JavaVM *javaVM)
 	return result;
 }
 
-void j9gc_jvmPhaseChange(J9VMThread *currentThread, UDATA phase)
+void j9gc_storeGCHints(J9VMThread *currentThread)
 {
 	J9JavaVM *vm = currentThread->javaVM;
 	MM_GCExtensions *ext = MM_GCExtensions::getExtensions(vm);
 	MM_EnvironmentBase env(currentThread->omrVMThread);
-	if (J9VM_PHASE_NOT_STARTUP == phase) {
 
-		if ((NULL != vm->sharedClassConfig) && ext->useGCStartupHints && (ext->initialMemorySize != ext->memoryMax)) {
-			if (ext->isStandardGC()) {
-				/* read old values from SC */
-				uintptr_t hintDefaultOld = 0;
-				uintptr_t hintTenureOld = 0;
-				vm->sharedClassConfig->findGCHints(currentThread, &hintDefaultOld, &hintTenureOld);
-				/* Nothing to do if read fails, we'll just assume the old values are 0 */
+	if ((NULL != vm->sharedClassConfig) && ext->useGCStartupHints
+		&& (ext->initialMemorySize != ext->memoryMax)
+		&& !vm->sharedClassConfig->storedGCHints(currentThread)
+	) {
+		if (ext->isStandardGC()) {
+			/* read old values from SC */
+			uintptr_t hintDefaultOld = 0;
+			uintptr_t hintTenureOld = 0;
+			vm->sharedClassConfig->findGCHints(currentThread, &hintDefaultOld, &hintTenureOld);
+			/* Nothing to do if read fails, we'll just assume the old values are 0 */
 
-				/* Get the current heap size values.
-				 * Default/Tenure MemorySubSpace is of type Generic (which is MemoryPool owner, while the parents are of type Flat/SemiSpace).
-				 * For SemiSpace the latter (parent) ones are what we want to deal with (expand), since it's what includes both Allocate And Survivor children.
-				 * For Flat it would probably make no difference if we used parent or child, but let's be consistent and use parent, too.
-				 */
-				MM_MemorySubSpace *defaultMemorySubSpace = ext->heap->getDefaultMemorySpace()->getDefaultMemorySubSpace()->getParent();
-				MM_MemorySubSpace *tenureMemorySubspace = ext->heap->getDefaultMemorySpace()->getTenureMemorySubSpace()->getParent();
+			/* Get the current heap size values.
+			 * Default/Tenure MemorySubSpace is of type Generic (which is MemoryPool owner, while the parents are of type Flat/SemiSpace).
+			 * For SemiSpace the latter (parent) ones are what we want to deal with (expand), since it's what includes both Allocate And Survivor children.
+			 * For Flat it would probably make no difference if we used parent or child, but let's be consistent and use parent, too.
+			 */
+			MM_MemorySubSpace *defaultMemorySubSpace = ext->heap->getDefaultMemorySpace()->getDefaultMemorySubSpace()->getParent();
+			MM_MemorySubSpace *tenureMemorySubspace = ext->heap->getDefaultMemorySpace()->getTenureMemorySubSpace()->getParent();
 
-				uintptr_t hintDefault = defaultMemorySubSpace->getActiveMemorySize();
-				uintptr_t hintTenure = 0;
+			uintptr_t hintDefault = defaultMemorySubSpace->getActiveMemorySize();
+			uintptr_t hintTenure = 0;
 
-				/* Standard GCs always have Default MSS (which is equal to Tenure for flat heap configuration).
-				 * So the simplest is always fetch Default, regardless if's generational haep configuration or not.
-				 * We fetch Tenure only if only not equal to Default (which implies it's generational) */
-				if (defaultMemorySubSpace != tenureMemorySubspace) {
-					hintTenure = tenureMemorySubspace->getActiveMemorySize();
-				}
-
-				/* Gradually learn, by averaging new values with old values - it may take a few restarts before hint converge to stable values */
-				hintDefault = (uintptr_t)MM_Math::weightedAverage((float)hintDefaultOld, (float)hintDefault, (1.0f - ext->heapSizeStartupHintWeightNewValue));
-				hintTenure = (uintptr_t)MM_Math::weightedAverage((float)hintTenureOld, (float)hintTenure, (1.0f - ext->heapSizeStartupHintWeightNewValue));
-
-				vm->sharedClassConfig->storeGCHints(currentThread, hintDefault, hintTenure, true);
-				/* Nothing to do if store fails, storeGCHints already issues a trace point */
+			/* Standard GCs always have Default MSS (which is equal to Tenure for flat heap configuration).
+			 * So the simplest is always fetch Default, regardless if's generational haep configuration or not.
+			 * We fetch Tenure only if only not equal to Default (which implies it's generational) */
+			if (defaultMemorySubSpace != tenureMemorySubspace) {
+				hintTenure = tenureMemorySubspace->getActiveMemorySize();
 			}
+
+			/* Gradually learn, by averaging new values with old values - it may take a few restarts before hint converge to stable values */
+			hintDefault = (uintptr_t)MM_Math::weightedAverage((float)hintDefaultOld, (float)hintDefault, (1.0f - ext->heapSizeStartupHintWeightNewValue));
+			hintTenure = (uintptr_t)MM_Math::weightedAverage((float)hintTenureOld, (float)hintTenure, (1.0f - ext->heapSizeStartupHintWeightNewValue));
+
+			vm->sharedClassConfig->storeGCHints(currentThread, hintDefault, hintTenure, true);
+			/* Nothing to do if store fails, storeGCHints already issues a trace point */
 		}
+	}
+}
+
+void j9gc_jvmPhaseChange(J9VMThread *currentThread, UDATA phase)
+{
+	if (J9VM_PHASE_NOT_STARTUP == phase) {
+		j9gc_storeGCHints(currentThread);
 	}
 }
 
@@ -2999,6 +3007,13 @@ gcInitializeDefaults(J9JavaVM* vm)
 	}
 
 	initializeVerboseFunctionTableWithDummies(&extensions->verboseFunctionTable);
+
+	if (J9_IS_GCCONTAINERHEURISTICS(vm)
+		&& J9_ARE_ANY_BITS_SET(vm->extendedRuntimeFlags2, J9_EXTENDED_RUNTIME2_ENABLE_PORTABLE_SHARED_CACHE)
+	) {
+		extensions->heapSizeStartupHintConservativeFactor = 1.0;
+		extensions->heapSizeStartupHintWeightNewValue = 1.0;
+	}
 
 	if (JNI_OK != gcParseCommandLineAndInitializeWithValues(vm, memoryParameterTable)) {
 		vm->internalVMFunctions->setErrorJ9dll(

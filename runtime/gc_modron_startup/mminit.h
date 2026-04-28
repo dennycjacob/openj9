@@ -56,6 +56,8 @@ jint triggerGCInitialized(J9VMThread* vmThread);
 
 void gcExpandHeapOnStartup(J9JavaVM *javaVM);
 
+void j9gc_storeGCHints(J9VMThread *currentThread);
+
 #ifdef __cplusplus
 } /* extern "C" { */
 #endif

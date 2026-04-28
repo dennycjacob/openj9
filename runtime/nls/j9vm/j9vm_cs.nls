@@ -2561,3 +2561,19 @@ J9NLS_VM_MISSING_DUMP_DLL_CRIU_RELOAD_AGENTS.explanation=A call to internal VM f
 J9NLS_VM_MISSING_DUMP_DLL_CRIU_RELOAD_AGENTS.system_action=The JVM will ignore the failure and continue.
 J9NLS_VM_MISSING_DUMP_DLL_CRIU_RELOAD_AGENTS.user_response=Check whether the JVM dump functions have been disabled via the -Xdump:none option.
 # END NON-TRANSLATABLE
+
+J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE=%2$.*1$s nen\u00ed identitn\u00ed t\u0159\u00edda. Slab\u00e9 odkazy lze vytv\u00e1\u0159et pouze u identitn\u00edch t\u0159\u00edd.
+# START NON-TRANSLATABLE
+J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.sample_input_1=3
+J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.sample_input_2=Foo
+J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.explanation=JNI NewWeakGlobalRef cannot be called on a value type.
+J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.system_action=The JVM will throw an IdentityException.
+J9NLS_VM_JNI_WEAK_GLOBAL_REF_CANNOT_BE_VALUE_TYPE.user_response=Do not call NewWeakGlobalRef on value types.
+# END NON-TRANSLATABLE
+
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION=JVM u se nepoda\u0159ilo povolit funkci \u201e %s \u201c v souboru s mo\u017enostmi obnoven\u00ed, proto\u017ee funkce \u201e -XX:+DebugOnRestore \u201c nebyla p\u0159ed vytvo\u0159en\u00edm kontroln\u00edho bodu povolena.
+# START NON-TRANSLATABLE
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION.explanation=The JDWP option can't be enabled post-restore because -XX:+DebugOnRestore wasn't enabled pre-checkpoint.
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION.system_action=The JVM will throw a JVMRestoreException.
+J9NLS_VM_CRIU_FAILED_TO_ENABLE_JDWP_RESTORE_OPTION.user_response=Enable -XX:+DebugOnRestore pre-checkpoint.
+# END NON-TRANSLATABLE

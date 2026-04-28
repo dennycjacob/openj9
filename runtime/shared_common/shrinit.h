@@ -71,6 +71,7 @@ const U_8* j9shr_findCompiledMethodEx1(J9VMThread* currentThread, const J9ROMMet
 void j9shr_jvmPhaseChange(J9VMThread* currentThread, UDATA phase);
 void j9shr_storeGCHints(J9VMThread* currentThread, UDATA heapSize1, UDATA heapSize2, BOOLEAN forceReplace);
 IDATA j9shr_findGCHints(J9VMThread* currentThread, UDATA *heapSize1, UDATA *heapSize2);
+BOOLEAN j9shr_storedGCHints(J9VMThread *currentThread);
 const U_8* storeStartupHintsToSharedCache(J9VMThread* currentThread);
 IDATA j9shr_getCacheDir(J9JavaVM* vm, const char* ctrlDirName, char* buffer, UDATA bufferSize, U_32 cacheType);
 U_32 getCacheTypeFromRuntimeFlags(U_64 runtimeFlags);

@@ -32,27 +32,29 @@ timestamps {
                 try {
                     retry(2) {
                         try {
-                            //Clone/update
-                            if (!fileExists('HEAD')) {
-                                sh "git clone --mirror ${HTTP}${SRC_REPO} ."
-                            } else {
+                            // Clone/update
+                            if (fileExists('HEAD')) {
                                 sh 'git remote update --prune'
+                            } else {
+                                sh "git clone --bare --no-tags --single-branch --branch master ${HTTP}${SRC_REPO} ."
                             }
 
                             // Push
                             withCredentials([usernamePassword(credentialsId: 'github-bot', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-                                sh "git push ${HTTP}${USERNAME}:${PASSWORD}@${TARGET_REPO} --all"
-                                sh "git push ${HTTP}${USERNAME}:${PASSWORD}@${TARGET_REPO} --tags"
+                                sh "git push ${HTTP}${USERNAME}:${PASSWORD}@${TARGET_REPO} master"
                             }
 
                             // Set the build description
-                            LAST_COMMIT = sh (
+                            def LAST_COMMIT = sh (
                                     script: 'git log --oneline -1',
                                     returnStdout: true
                                 ).trim()
                             currentBuild.description = "${LAST_COMMIT}"
 
-                            current_sha = LAST_COMMIT.take(7)
+                            def current_sha = sh (
+                                    script: 'git rev-parse --short HEAD',
+                                    returnStdout: true
+                                ).trim()
 
                             // if there were changes, launch an acceptance build
                             copyArtifacts optional: true, projectName: JOB_NAME, selector: lastSuccessful()

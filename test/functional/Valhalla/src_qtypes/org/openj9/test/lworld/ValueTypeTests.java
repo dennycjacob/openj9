@@ -2639,11 +2639,110 @@ public class ValueTypeTests {
 		int h4 = p4.hashCode();
 		int h5 = p5.hashCode();
 
+		System.gc();
+
+		int h1_afterGC = p1.hashCode();
+		int h2_afterGC = p2.hashCode();
+		int h3_afterGC = p3.hashCode();
+		int h4_afterGC = p4.hashCode();
+		int h5_afterGC = p5.hashCode();
+
 		assertEquals(h1, h2);
 		assertNotEquals(h1, h3);
 		assertNotEquals(h1, h4);
 		assertNotEquals(h1, h5);
 		assertEquals(h1, System.identityHashCode(p1));
+		assertEquals(h1, h1_afterGC);
+		assertEquals(h2, h2_afterGC);
+		assertEquals(h3, h3_afterGC);
+		assertEquals(h4, h4_afterGC);
+		assertEquals(h5, h5_afterGC);
+	}
+
+	/* https://github.com/eclipse-openj9/openj9/issues/15768 */
+	@Test(priority=1, enabled = false)
+	static public void testValueTypeHashCodeWithNullRestrictedFields() throws Throwable {
+		Object p1 = new ValueTypePoint2D(new ValueTypeInt(1), new ValueTypeInt(2));
+		Object p2 = new ValueTypePoint2D(new ValueTypeInt(1), new ValueTypeInt(2));
+		Object p3 = new ValueTypePoint2D(new ValueTypeInt(2), new ValueTypeInt(2));
+
+		int h1 = p1.hashCode();
+		int h2 = p2.hashCode();
+		int h3 = p3.hashCode();
+
+		System.gc();
+
+		int h1_afterGC = p1.hashCode();
+		int h2_afterGC = p2.hashCode();
+		int h3_afterGC = p3.hashCode();
+
+		assertEquals(h1, h2);
+		assertNotEquals(h1, h3);
+		assertEquals(h1, h1_afterGC);
+		assertEquals(h2, h2_afterGC);
+		assertEquals(h3, h3_afterGC);
+	}
+
+	/* https://github.com/eclipse-openj9/openj9/issues/15768 */
+	@Test(priority=1, enabled = false)
+	static public void testValueTypeHashCodeWithIdentityField() throws Throwable {
+		Object p1 = new ValueClassWithIdentityField(1);
+		Object p2 = new ValueClassWithIdentityField(1);
+		Object p3 = new ValueClassWithIdentityField(2);
+
+		int h1 = p1.hashCode();
+		int h2 = p2.hashCode();
+		int h3 = p3.hashCode();
+
+		System.gc();
+
+		int h1_afterGC = p1.hashCode();
+		int h2_afterGC = p2.hashCode();
+		int h3_afterGC = p3.hashCode();
+
+		assertNotEquals(h1, h2);
+		assertNotEquals(h1, h3);
+		assertEquals(h1, h1_afterGC);
+		assertEquals(h2, h2_afterGC);
+		assertEquals(h3, h3_afterGC);
+	}
+
+	/* https://github.com/eclipse-openj9/openj9/issues/15768 */
+	@Test(priority=1, enabled = false)
+	static public void testValueTypeHashCodeWithNullReference() throws Throwable {
+		Object p1 = new ValueClassPoint2D(new ValueClassInt(1), null);
+		Object p2 = new ValueClassPoint2D(new ValueClassInt(1), null);
+
+		int h1 = p1.hashCode();
+		int h2 = p2.hashCode();
+
+		System.gc();
+
+		int h1_afterGC = p1.hashCode();
+		int h2_afterGC = p2.hashCode();
+
+		assertEquals(h1, h2);
+		assertEquals(h1, h1_afterGC);
+		assertEquals(h2, h2_afterGC);
+	}
+
+	/* https://github.com/eclipse-openj9/openj9/issues/15768 */
+	@Test(priority=1, enabled = false)
+	static public void testValueTypeHashCodeWithSameIdentityField() throws Throwable {
+		Object p1 = new ValueClassSubArray(0, 5);
+		Object p2 = new ValueClassSubArray(1, 4);
+
+		int h1 = p1.hashCode();
+		int h2 = p2.hashCode();
+
+		System.gc();
+
+		int h1_afterGC = p1.hashCode();
+		int h2_afterGC = p2.hashCode();
+
+		assertNotEquals(h1, h2);
+		assertEquals(h1, h1_afterGC);
+		assertEquals(h2, h2_afterGC);
 	}
 
 	@Test(priority = 1, expectedExceptions = ClassFormatError.class,

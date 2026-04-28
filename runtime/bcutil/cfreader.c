@@ -2429,7 +2429,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 				errorCode = J9NLS_CFR_ERR_BAD_INDEX__ID;
 				goto _errorFound;
 			}
-			if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Utf8)) {
+			if (CFR_CONSTANT_Utf8 != cpBase[value].tag) {
 				errorCode = J9NLS_CFR_ERR_RECORD_NAME_NOT_UTF8__ID;
 				goto _errorFound;
 			}
@@ -2441,7 +2441,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 					errorCode = J9NLS_CFR_ERR_BAD_INDEX__ID;
 					goto _errorFound;
 				}
-				if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Utf8)) {
+				if (CFR_CONSTANT_Utf8 != cpBase[value].tag) {
 					errorCode = J9NLS_CFR_ERR_RECORD_COMPONENT_NAME_NOT_UTF8__ID;
 					goto _errorFound;
 				}
@@ -2450,7 +2450,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 					errorCode = J9NLS_CFR_ERR_BAD_INDEX__ID;
 					goto _errorFound;
 				}
-				if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Utf8)) {
+				if (CFR_CONSTANT_Utf8 != cpBase[value].tag) {
 					errorCode = J9NLS_CFR_ERR_RECORD_COMPONENT_DESCRIPTOR_NOT_UTF8__ID;
 					goto _errorFound;
 				}
@@ -2486,7 +2486,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 				}
 				break;
 			}
-			if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Utf8)) {
+			if (CFR_CONSTANT_Utf8 != cpBase[value].tag) {
 				if (enablePermittedSubclassErrors) {
 					errorCode = J9NLS_CFR_ERR_PERMITTEDSUBCLASSES_NAME_NOT_UTF8__ID;
 					goto _errorFound;
@@ -2503,7 +2503,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 					}
 					break;
 				}
-				if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Class)) {
+				if (CFR_CONSTANT_Class != cpBase[value].tag) {
 					if (enablePermittedSubclassErrors) {
 						errorCode = J9NLS_CFR_ERR_PERMITTEDSUBCLASSES_CLASS_ENTRY_NOT_CLASS_TYPE__ID;
 						goto _errorFound;
@@ -2521,7 +2521,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 				goto _errorFound;
 				break;
 			}
-			if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Utf8)) {
+			if (CFR_CONSTANT_Utf8 != cpBase[value].tag) {
 				errorCode = J9NLS_CFR_ERR_LOADABLEDESCRIPTORS_NAME_NOT_UTF8__ID;
 				goto _errorFound;
 				break;
@@ -2534,7 +2534,7 @@ checkAttributes(J9PortLibrary* portLib, J9CfrClassFile* classfile, J9CfrAttribut
 					goto _errorFound;
 					break;
 				}
-				if ((0 != value) && (cpBase[value].tag != CFR_CONSTANT_Utf8)) {
+				if (CFR_CONSTANT_Utf8 != cpBase[value].tag) {
 					errorCode = J9NLS_CFR_ERR_LOADABLEDESCRIPTORS_ENTRY_NOT_UTF8_TYPE__ID;
 					goto _errorFound;
 					break;

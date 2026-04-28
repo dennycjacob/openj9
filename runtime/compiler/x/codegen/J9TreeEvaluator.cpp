@@ -4210,7 +4210,7 @@ TR::Register *J9::X86::TreeEvaluator::longNumberOfTrailingZeros(TR::Node *node, 
 inline void generateInlinedCheckCastForDynamicCastClass(TR::Node *node, TR::CodeGenerator *cg)
 {
     TR::Compilation *comp = cg->comp();
-    auto use64BitClasses = comp->target().is64Bit()
+    bool use64BitClasses = comp->target().is64Bit()
         && (!TR::Compiler->om.generateCompressedObjectHeaders()
             || (comp->compileRelocatableCode() && comp->getOption(TR_UseSymbolValidationManager)));
     TR::Register *ObjReg = cg->evaluate(node->getFirstChild());
@@ -4586,6 +4586,8 @@ static void inlineCheckCastOrInstanceOfFinalArrayCastClass(TR::Node *node, TR_Op
     fallThruLabel->setEndInternalControlFlow();
 
     J9Class *castClassLeafJ9Class = (J9Class *)cg->fe()->getLeafComponentClassFromArrayClass(clazz);
+    SVM_ASSERT_NONFATAL(castClassLeafJ9Class, "Could not find j9leaf class from array class, %p", clazz);
+
     TR_OpaqueClassBlock *castClassLeafClass = TR::Compiler->cls.convertClassPtrToClassOffset(castClassLeafJ9Class);
 
     static char *breakOnInlineFinalArrayCastClass = feGetEnv("TR_BreakOnInlineFinalArrayCastClass");
@@ -4620,16 +4622,21 @@ static void inlineCheckCastOrInstanceOfFinalArrayCastClass(TR::Node *node, TR_Op
     // trivial check whether objectClass is the same as the castClass.
     // -----------------------------------------------------------------------
 
+    /*
+     * A quick note on relocation type. We use TR_ClassPointer, rather than TR_ClassAddress
+     * or TR_SymbolFromManager for the relocation types, we use TR_ClassPointer since
+     * the addMetaData* methods do not fully support those two relo types. In the future,
+     * after that support is added, the relocation type should be changed to TR_ClassAddress
+     */
+
     generateLoadJ9Class(node, objectClassReg, objectReg, cg);
     uintptr_t clazzAddress = (uintptr_t)clazz;
 
-    if (IS_32BIT_SIGNED(clazzAddress)) {
-        // TODO: Need a relocation for clazz
+    if (IS_32BIT_SIGNED(clazzAddress) && !comp->compileRelocatableCode()) {
         generateRegImmInstruction(TR::InstOpCode::CMP8RegImm4, node, objectClassReg, (int32_t)clazzAddress, cg);
     } else {
-        // TODO: Need a relocation for clazz
         scratchReg = cg->allocateRegister();
-        generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, clazzAddress, cg);
+        generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, clazzAddress, cg, TR_ClassPointer);
         generateRegRegInstruction(TR::InstOpCode::CMP8RegReg, node, objectClassReg, scratchReg, cg);
     }
 
@@ -4731,12 +4738,15 @@ static void generateCastClassCacheUpdate(TR::Register *objectClassReg, uintptr_t
     TR::MemoryReference *castClassMR
         = generateX86MemoryReference(objectClassReg, offsetof(J9Class, castClassCache), cg);
 
-    if (!use64BitClasses || (use64BitClasses && IS_32BIT_SIGNED(clazzAddress))) {
+    bool use32Bit = (!cg->comp()->compileRelocatableCode())
+        && (!use64BitClasses || (use64BitClasses && IS_32BIT_SIGNED(clazzAddress)));
+
+    if (use32Bit) {
         generateMemImmInstruction(TR::InstOpCode::S8MemImm4, node, castClassMR, (int32_t)clazzAddress, cg);
     } else {
         if (!scratchReg)
             scratchReg = cg->allocateRegister();
-        generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, clazzAddress, cg);
+        generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, clazzAddress, cg, TR_ClassPointer);
         generateMemRegInstruction(TR::InstOpCode::S8MemReg, node, castClassMR, scratchReg, cg);
     }
 }
@@ -4854,7 +4864,7 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
     TR::Register *scratchReg2 = NULL;
     TR::Register *scratchReg3 = NULL;
 
-    bool use64BitClasses = !TR::Compiler->om.generateCompressedObjectHeaders();
+    bool use64BitClasses = !TR::Compiler->om.generateCompressedObjectHeaders() || comp->compileRelocatableCode();
 
     TR::LabelSymbol *startLabel = generateLabelSymbol(cg);
     TR::LabelSymbol *fallThruLabel = generateLabelSymbol(cg);
@@ -4865,6 +4875,8 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
     TR_OutlinedInstructions *outlinedHelperCall = NULL;
 
     J9Class *castClassLeafJ9Class = (J9Class *)fej9->getLeafComponentClassFromArrayClass((TR_OpaqueClassBlock *)clazz);
+    SVM_ASSERT_NONFATAL(castClassLeafJ9Class, "Could not find j9leaf class from array class, %p", clazz);
+
     TR_OpaqueClassBlock *castClassLeafClass = TR::Compiler->cls.convertClassPtrToClassOffset(castClassLeafJ9Class);
 
     static char *breakOnInlineArrayCastClass = feGetEnv("TR_BreakOnInlineArrayCastClass");
@@ -4908,13 +4920,11 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
     generateLoadJ9Class(node, objectClassReg, objectReg, cg);
     uintptr_t clazzAddress = (uintptr_t)clazz;
 
-    if (IS_32BIT_SIGNED(clazzAddress)) {
-        // TODO: Need a relocation for clazz
+    if (IS_32BIT_SIGNED(clazzAddress) && !comp->compileRelocatableCode()) {
         generateRegImmInstruction(TR::InstOpCode::CMP8RegImm4, node, objectClassReg, (int32_t)clazzAddress, cg);
     } else {
-        // TODO: Need a relocation for clazz
         scratchReg = cg->allocateRegister();
-        generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, clazzAddress, cg);
+        generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, clazzAddress, cg, TR_ClassPointer);
         generateRegRegInstruction(TR::InstOpCode::CMP8RegReg, node, objectClassReg, scratchReg, cg);
     }
 
@@ -4931,12 +4941,13 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
         generateX86MemoryReference(objectClassReg, offsetof(J9Class, castClassCache), cg), cg);
 
     if (use64BitClasses) {
-        if (IS_32BIT_SIGNED(clazzAddress)) {
+        if (IS_32BIT_SIGNED(clazzAddress) && !comp->compileRelocatableCode()) {
             generateRegImmInstruction(TR::InstOpCode::XOR8RegImm4, node, scratchReg, (int32_t)clazzAddress, cg);
         } else {
             if (!scratchReg2)
                 scratchReg2 = cg->allocateRegister();
-            generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg2, clazzAddress, cg);
+            generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg2, clazzAddress, cg,
+                TR_ClassPointer);
             generateRegRegInstruction(TR::InstOpCode::XOR8RegReg, node, scratchReg, scratchReg2, cg);
         }
     } else {
@@ -5038,13 +5049,12 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
 
         uintptr_t componentClazzAddress = (uintptr_t)castClassLeafJ9Class;
 
-        if (IS_32BIT_SIGNED(componentClazzAddress)) {
-            // TODO: Need a relocation for componentClazz
+        if (IS_32BIT_SIGNED(componentClazzAddress) && !comp->compileRelocatableCode()) {
             generateRegImmInstruction(TR::InstOpCode::CMP8RegImm4, node, objectClassLeafReg,
                 (int32_t)componentClazzAddress, cg);
         } else {
-            // TODO: Need a relocation for componentClazz
-            generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, componentClazzAddress, cg);
+            generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg, componentClazzAddress, cg,
+                TR_ClassPointer);
             generateRegRegInstruction(TR::InstOpCode::CMP8RegReg, node, objectClassLeafReg, scratchReg, cg);
         }
 
@@ -5090,7 +5100,7 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
 
             TR::MemoryReference *superclassMR2 = generateX86MemoryReference(scratchReg, offset, cg);
             if (use64BitClasses) {
-                if (IS_32BIT_SIGNED(componentClazzAddress)) {
+                if (IS_32BIT_SIGNED(componentClazzAddress) && !comp->compileRelocatableCode()) {
                     generateMemImmInstruction(TR::InstOpCode::CMP8MemImm4, node, superclassMR2,
                         (int32_t)componentClazzAddress, cg);
                 } else {
@@ -5098,7 +5108,7 @@ static void inlineCheckCastOrInstanceOfKnownArrayCastClass(TR::Node *node, TR_Op
                         scratchReg3 = cg->allocateRegister();
 
                     generateRegImm64Instruction(TR::InstOpCode::MOV8RegImm64, node, scratchReg3, componentClazzAddress,
-                        cg);
+                        cg, TR_ClassPointer);
                     generateMemRegInstruction(TR::InstOpCode::CMP8MemReg, node, superclassMR2, scratchReg3, cg);
                 }
             } else {
@@ -5261,9 +5271,10 @@ static void generateInlinedCheckCastOrInstanceOfForArrayClass(TR::Node *node, TR
             inlineCheckCastOrInstanceOfObjectArrayCastClass(node, clazz, isCheckCast, cg);
             return;
         } else {
-            bool isRelocatableCompile = comp->compileRelocatableCode();
+            bool perform = comp->target().is64Bit()
+                && (!comp->compileRelocatableCode() || comp->getOption(TR_UseSymbolValidationManager));
 
-            if (!isRelocatableCompile && comp->target().is64Bit()) {
+            if (perform) {
                 /**
                  * The only reason this is disabled for relocatable compiles (AOT and out-of-process
                  * compiles like JitServer) is because the support has not been implemented yet.
@@ -5273,7 +5284,9 @@ static void generateInlinedCheckCastOrInstanceOfForArrayClass(TR::Node *node, TR
                  */
                 TR_OpaqueClassBlock *castClassLeafClass = fej9->getLeafComponentClassFromArrayClass(clazz);
 
-                if (!disableInlineFinalArrayCastClass && fej9->isClassFinal(castClassLeafClass)) {
+                if (!castClassLeafClass) {
+                    return;
+                } else if (!disableInlineFinalArrayCastClass && fej9->isClassFinal(castClassLeafClass)) {
                     inlineCheckCastOrInstanceOfFinalArrayCastClass(node, clazz, isCheckCast, cg);
                     return;
                 } else if (!disableInlineKnownArrayCastClass) {

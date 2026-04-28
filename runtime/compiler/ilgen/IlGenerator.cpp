@@ -374,6 +374,20 @@ bool TR_J9ByteCodeIlGenerator::genILFromByteCodes()
     if (comp()->isPeekingMethod() && _maxByteCodeIndex >= USHRT_MAX / 8)
         return false;
 
+    if (comp()->getOptLevel() == warm) {
+        static const char *disableIdiomRecognitionAtWarm = feGetEnv("TR_disableIdiomRecognitionAtWarm");
+        TR::RecognizedMethod recognizedMethod = _methodSymbol->getRecognizedMethod();
+        if (!disableIdiomRecognitionAtWarm) {
+            switch (recognizedMethod) {
+                case TR::java_lang_String_startsWith:
+                    _methodSymbol->setHasIdiomRecognitionOpportunities(true);
+                    break;
+                default:
+                    break; // do nothing
+            }
+        }
+    }
+
     // FSD sync object support
     //
     // Ideally, I'd like the sync object in FSD to work exactly as it does in the interpreter.
