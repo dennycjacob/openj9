@@ -35,7 +35,7 @@
 	<property name="src" location="./src" />
 	<property name="build" location="./bin" />
 	<property name="transformerListener" location="${TEST_ROOT}/Utils/src"/>
-	<property name="LIB" value="asm_all,testng"/>
+	<property name="LIB" value="asm_all,testng,jcommander"/>
 	<import file="${TEST_ROOT}/TKG/scripts/getDependencies.xml"/>
 
 	<target name="init">
@@ -54,6 +54,7 @@
 			<src path="${src}" />
 			<classpath>
 				<pathelement location="${LIB_DIR}/asm-all.jar" />
+				<pathelement location="${LIB_DIR}/jcommander.jar" />
 				<pathelement location="${LIB_DIR}/testng.jar" />
 			</classpath>
 		</javac>

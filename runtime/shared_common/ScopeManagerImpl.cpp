@@ -317,7 +317,7 @@ SH_ScopeManagerImpl::validate(J9VMThread* currentThread, const J9UTF8* partition
 		}
 	}
 	if (cachedModContext) {
-		const J9UTF8* modContext = (const J9UTF8*)_cache->getAddressFromJ9ShrOffset(&(scopedMatch->partitionOffset));
+		const J9UTF8* modContext = (const J9UTF8*)_cache->getAddressFromJ9ShrOffset(&(scopedMatch->modContextOffset));
 		if ((NULL == modContext)
 			|| (cachedModContext != modContext)
 		) {

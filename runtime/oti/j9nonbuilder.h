@@ -4453,6 +4453,10 @@ typedef struct J9JITConfig {
 	void *old_slow_jitReportInstanceFieldWrite;
 	void *old_slow_jitReportStaticFieldRead;
 	void *old_slow_jitReportStaticFieldWrite;
+#if defined(J9VM_ARCH_X86) && defined(J9VM_ENV_DATA64)
+	void *saveVectorRegisters;
+	void *restoreVectorRegisters;
+#endif /* defined(J9VM_ARCH_X86) && defined(J9VM_ENV_DATA64) */
 	struct J9MemorySegment* codeCache;
 	struct J9MemorySegment* dataCache;
 	struct J9MemorySegmentList* codeCacheList;
@@ -5022,9 +5026,6 @@ typedef struct J9MemoryManagerFunctions {
 	void  ( *j9gc_objaccess_indexableStoreU32)(struct J9VMThread *vmThread, J9IndexableObject *destObject, I_32 index, U_32 value, UDATA isVolatile) ;
 	void  ( *j9gc_objaccess_indexableStoreI64)(struct J9VMThread *vmThread, J9IndexableObject *destObject, I_32 index, I_64 value, UDATA isVolatile) ;
 	void  ( *j9gc_objaccess_indexableStoreU64)(struct J9VMThread *vmThread, J9IndexableObject *destObject, I_32 index, U_64 value, UDATA isVolatile) ;
-#if !defined(J9VM_ENV_DATA64)
-	void  ( *j9gc_objaccess_indexableStoreU64Split)(struct J9VMThread *vmThread, J9IndexableObject *destObject, I_32 index, U_32 valueSlot0, U_32 valueSlot1, UDATA isVolatile) ;
-#endif /* !defined(J9VM_ENV_DATA64) */
 	void  ( *j9gc_objaccess_indexableStoreObject)(struct J9VMThread *vmThread, J9IndexableObject *destObject, I_32 index, j9object_t value, UDATA isVolatile) ;
 	void  ( *j9gc_objaccess_indexableStoreAddress)(struct J9VMThread *vmThread, J9IndexableObject *destObject, I_32 index, void *value, UDATA isVolatile) ;
 	IDATA  ( *j9gc_objaccess_indexableDataDisplacement)(struct J9StackWalkState *walkState, J9IndexableObject *src, J9IndexableObject *dst) ;
@@ -5052,9 +5053,6 @@ typedef struct J9MemoryManagerFunctions {
 	void  ( *j9gc_objaccess_mixedObjectStoreU64)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_64 value, UDATA isVolatile) ;
 	void  ( *j9gc_objaccess_mixedObjectStoreObject)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, j9object_t value, UDATA isVolatile) ;
 	void  ( *j9gc_objaccess_mixedObjectStoreAddress)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, void *value, UDATA isVolatile) ;
-#if !defined(J9VM_ENV_DATA64)
-	void  ( *j9gc_objaccess_mixedObjectStoreU64Split)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_32 valueSlot0, U_32 valueSlot1, UDATA isVolatile) ;
-#endif /* !defined(J9VM_ENV_DATA64) */
 	UDATA  ( *j9gc_objaccess_mixedObjectCompareAndSwapInt)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_32 compareValue, U_32 swapValue) ;
 	UDATA  ( *j9gc_objaccess_mixedObjectCompareAndSwapLong)(struct J9VMThread *vmThread, j9object_t destObject, UDATA offset, U_64 compareValue, U_64 swapValue) ;
 #if defined(J9VM_OPT_VALHALLA_COMPACT_LAYOUTS)
@@ -5075,9 +5073,6 @@ typedef struct J9MemoryManagerFunctions {
 	void  ( *j9gc_objaccess_staticStoreU64)(struct J9VMThread *vmThread, J9Class *clazz, U_64 *destSlot, U_64 value, UDATA isVolatile) ;
 	void  ( *j9gc_objaccess_staticStoreObject)(struct J9VMThread *vmThread, J9Class *clazz, j9object_t *destSlot, j9object_t value, UDATA isVolatile) ;
 	void  ( *j9gc_objaccess_staticStoreAddress)(struct J9VMThread *vmThread, J9Class *clazz, void **destSlot, void *value, UDATA isVolatile) ;
-#if !defined(J9VM_ENV_DATA64)
-	void  ( *j9gc_objaccess_staticStoreU64Split)(struct J9VMThread *vmThread, J9Class *clazz, U_64 *destSlot, U_32 valueSlot0, U_32 valueSlot1, UDATA isVolatile) ;
-#endif /* !defined(J9VM_ENV_DATA64) */
 	void  ( *j9gc_objaccess_storeObjectToInternalVMSlot)(struct J9VMThread *vmThread, j9object_t *destSlot, j9object_t value) ;
 	j9object_t  ( *j9gc_objaccess_readObjectFromInternalVMSlot)(struct J9VMThread *vmThread, struct J9JavaVM *vm, j9object_t *srcSlot) ;
 	U_8*  ( *j9gc_objaccess_getArrayObjectDataAddress)(struct J9VMThread *vmThread, J9IndexableObject *arrayObject) ;
@@ -5155,14 +5150,8 @@ typedef struct J9MemoryManagerFunctions {
 #if defined(J9VM_GC_OBJECT_ACCESS_BARRIER)
 	UDATA  ( *j9gc_objaccess_staticCompareAndSwapInt)(struct J9VMThread *vmThread, J9Class *destClass, U_32 *destAddress, U_32 compareValue, U_32 swapValue) ;
 	U_32  ( *j9gc_objaccess_staticCompareAndExchangeInt)(struct J9VMThread *vmThread, J9Class *destClass, U_32 *destAddress, U_32 compareValue, U_32 swapValue) ;
-#if !defined(J9VM_ENV_DATA64)
-	UDATA  ( *j9gc_objaccess_mixedObjectCompareAndSwapLongSplit)(struct J9VMThread *vmThread, J9Object *destObject, UDATA offset, U_32 compareValueSlot0, U_32 compareValueSlot1, U_32 swapValueSlot0, U_32 swapValueSlot1) ;
-#endif /* !defined(J9VM_ENV_DATA64) */
 	UDATA  ( *j9gc_objaccess_staticCompareAndSwapLong)(struct J9VMThread *vmThread, J9Class *destClass, U_64 *destAddress, U_64 compareValue, U_64 swapValue) ;
 	U_64 ( *j9gc_objaccess_staticCompareAndExchangeLong)(struct J9VMThread *vmThread, J9Class *destClass, U_64 *destAddress, U_64 compareValue, U_64 swapValue) ;
-#if !defined(J9VM_ENV_DATA64)
-	UDATA  ( *j9gc_objaccess_staticCompareAndSwapLongSplit)(struct J9VMThread *vmThread, J9Class *destClass, U_64 *destAddress, U_32 compareValueSlot0, U_32 compareValueSlot1, U_32 swapValueSlot0, U_32 swapValueSlot1) ;
-#endif /* !defined(J9VM_ENV_DATA64) */
 #endif /* defined(J9VM_GC_OBJECT_ACCESS_BARRIER) */
 	UDATA  ( *j9gc_get_bytes_allocated_by_thread)(struct J9VMThread *vmThread) ;
 	BOOLEAN ( *j9gc_get_cumulative_bytes_allocated_by_thread)(struct J9VMThread *vmThread, UDATA *cumulativeValue) ;
@@ -7121,8 +7110,9 @@ typedef struct J9CInterpreterStackFrame {
 	 *
 	 * Stack must be 16-byte aligned.
 	 */
-	U_8 jitFPRs[6 * 16]; /* xmm0-5 128-bit OR xmm0-7 64-bit */
+	U_8 jitFPRs[16 * 64]; /* zmm0-15 512-bit OR xmm0-7 64-bit */
 	U_8 preservedFPRs[10 * 16]; /* xmm6-15 128-bit */
+	U_8 maskRegisters[8 * 8]; /* k0-k7 */
 	UDATA align[1];
 	/* r15,r14,r13,r12,rdi,rsi,rbx,rbp,return address
 	 * RSP is 16-byte aligned at this point
@@ -7132,7 +7122,8 @@ typedef struct J9CInterpreterStackFrame {
 	 *
 	 * Stack must be 16-byte aligned.
 	 */
-	U_8 jitFPRs[16 * 16]; /* xmm0-15 128-bit OR xmm0-7 64-bit */
+	U_8 jitFPRs[32 * 64]; /* zmm0-31 512-bit OR xmm0-7 64-bit */
+	U_8 maskRegisters[8 * 8]; /* k0-k7 */
 	UDATA align[1];
 	/* r15,r14,r13,r12,rbx,rbp,return address
 	 * RSP is 16-byte aligned at this point

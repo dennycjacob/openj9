@@ -29,17 +29,6 @@
 extern "C" {
 #endif
 
-/* ---------------- dbgsharedcache.c ---------------- */
-
-/**
- * @brief
- * @param srcaddr
- * @param size
- * @return UDATA
- */
-J9SRP
-shcDbgReadSRP(UDATA srcaddr);
-
 /* ---------------- shcdatautils.c ---------------- */
 
 /**

@@ -810,6 +810,18 @@
 		<output type="failure" caseSensitive="yes" regex="no">Processing dump event</output>
 	</test>
 	
+	<test id="Test 198-c: Re-use previous cache with the same modification context" timeout="600" runPath=".">
+		<command>$JAVA_EXE$ $currentMode$,modified=mod1 -Xtrace:print={j9shr.619-621} -version</command>
+		<output type="success" caseSensitive="no" regex="yes" javaUtilPattern="yes">(java|openjdk|semeru) version</output>
+		<output type="required" caseSensitive="yes" regex="no">SMI validate: Exiting with 1 - validation succeeded</output>
+
+		<output type="failure" caseSensitive="no" regex="no">SMI validate: Exiting with 0</output>
+		<output type="failure" caseSensitive="no" regex="no">Unhandled Exception</output>
+		<output type="failure" caseSensitive="yes" regex="no">Exception:</output>
+		<output type="failure" caseSensitive="no" regex="no">corrupt</output>
+		<output type="failure" caseSensitive="yes" regex="no">Processing dump event</output>
+	</test>
+
 	<test id="Test 199-a: Create a cache with a sample program" timeout="600" runPath=".">
 		<command>$JAVA_EXE$ $currentMode$,reset -Xnolinenumbers $CP_HANOI$ $PROGRAM_HANOI$</command>
 		<output type="success" caseSensitive="yes" regex="no">Puzzle solved!</output>
