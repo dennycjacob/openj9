@@ -68,7 +68,6 @@ const VM_JFRChunkWriter::EventIds VM_JFRChunkWriter::v1Events = {
 	114,
 	130,
 	131,
-	132,
 	133,
 	134,
 	163,
@@ -132,7 +131,6 @@ const VM_JFRChunkWriter::EventIds VM_JFRChunkWriter::v2Events = {
 	JfrModuleExportEvent,
 	JfrGCConfigurationEvent,
 	JfrGCSurvivorConfigurationEvent,
-	JfrGCTLABConfigurationEvent,
 	JfrGCHeapConfigurationEvent,
 	JfrYoungGenerationConfigurationEvent,
 	TYPE_NETWORKINTERFACENAME,
@@ -1182,33 +1180,6 @@ VM_JFRChunkWriter::writeYoungGenerationConfigurationEvent()
 
 	/* write young generation to old generation ratio */
 	_bufferWriter->writeLEB128(youngGenConfig->newRatio);
-
-	/* write event size */
-	writeEventSize(dataStart);
-}
-
-void
-VM_JFRChunkWriter::writeGCTLABConfigurationEvent()
-{
-	GCTLABConfigurationEntry *tlabConfig = &(VM_JFRConstantPoolTypes::getJFRConstantEvents(_vm)->GCTLABConfigEntry);
-
-	/* reserve size field */
-	U_8 *dataStart = reserveEventSize();
-
-	/* write event type */
-	_bufferWriter->writeLEB128(events->GCTLABConfigurationID);
-
-	/* write event start time */
-	_bufferWriter->writeLEB128(j9time_nano_time());
-
-	/* write whether TLABs are in use */
-	_bufferWriter->writeBoolean(tlabConfig->usesTLABs);
-
-	/* write minimum TLAB size */
-	_bufferWriter->writeLEB128(tlabConfig->minTLABSize);
-
-	/* write TLAB refill waste limit */
-	_bufferWriter->writeLEB128(tlabConfig->tlabRefillWasteLimit);
 
 	/* write event size */
 	writeEventSize(dataStart);
