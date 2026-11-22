@@ -1125,8 +1125,6 @@ done:
 
 		requiredBufferSize += (_constantPoolTypes.getDataLossCount() * DATA_LOSS_EVENT_SIZE);
 
-		requiredBufferSize *= 2;
-
 		return requiredBufferSize;
 	}
 
