@@ -203,7 +203,9 @@ done:
 		return result;
 
 fail:
-		Trc_VM_jfr_ErrorWritingChunk2(currentThread, (int)chunkWriter.buildResult());
+#if defined(DEBUG)
+		j9tty_printf(PORTLIB, "Failed to write chunk to file error code=%d\n", (int) chunkWriter.buildResult());
+#endif /* defined(DEBUG) */
 		goto done;
 	}
 
